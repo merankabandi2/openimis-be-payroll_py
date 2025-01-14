@@ -8,6 +8,10 @@ class StrategyOfPaymentInterface(object,  metaclass=abc.ABCMeta):
         pass
 
     @classmethod
+    def verify_payroll(cls, payroll, user, **kwargs):
+        pass
+
+    @classmethod
     def accept_payroll(cls, payroll, user, **kwargs):
         pass
 
@@ -20,6 +24,17 @@ class StrategyOfPaymentInterface(object,  metaclass=abc.ABCMeta):
         from payroll.models import PayrollStatus
         cls.change_status_of_payroll(payroll, PayrollStatus.REJECTED, user)
         cls.remove_benefits_from_rejected_payroll(payroll)
+
+    @classmethod
+    def reject_validated_payroll(cls, payroll, user):
+        from core.services.utils.serviceUtils import model_representation
+        from payroll.models import (
+            PayrollStatus
+        )
+        from payroll.services import PayrollService
+
+        cls.change_status_of_payroll(payroll, PayrollStatus.PENDING_VERIFICATION, user)
+        PayrollService(user).create_verify_payroll_task(payroll.id, model_representation(payroll))
 
     @classmethod
     def reject_approved_payroll(cls, payroll, user):

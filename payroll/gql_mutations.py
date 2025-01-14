@@ -34,6 +34,7 @@ class UpdatePaymentGatewayConfigInputType(OpenIMISMutation.Input):
 
 class CreatePayrollInput(OpenIMISMutation.Input):
     class PayrollStatusEnum(graphene.Enum):
+        PENDING_VERIFICATION = PayrollStatus.PENDING_VERIFICATION
         PENDING_APPROVAL = PayrollStatus.PENDING_APPROVAL
         APPROVE_FOR_PAYMENT = PayrollStatus.APPROVE_FOR_PAYMENT
         REJECTED = PayrollStatus.REJECTED

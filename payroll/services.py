@@ -30,7 +30,7 @@ from payroll.strategies import StrategyOfPaymentInterface
 from calculation.services import get_calculation_object
 from core.services.utils import output_exception, check_authentication
 from contribution_plan.models import PaymentPlan
-from social_protection.models import Beneficiary, BeneficiaryStatus
+from social_protection.models import Beneficiary, GroupBeneficiary, BeneficiaryStatus
 from tasks_management.apps import TasksManagementConfig
 from tasks_management.models import Task
 from tasks_management.services import TaskService, _get_std_task_data_payload
@@ -86,7 +86,7 @@ class PayrollService(BaseService):
                     )
                 else:
                     self._move_benefit_consumptions(payroll, from_failed_invoices_payroll_id)
-                self.create_accept_payroll_task(payroll.id, obj_data)
+                self.create_verify_payroll_task(payroll.id, obj_data)
                 return dict_representation
         except Exception as exc:
             return output_exception(model_name=self.OBJECT_TYPE.__name__, method="create", exception=exc)
@@ -125,6 +125,19 @@ class PayrollService(BaseService):
             'status': Task.Status.RECEIVED,
             'executor_action_event': TasksManagementConfig.default_executor_event,
             'business_event': PayrollConfig.payroll_accept_event,
+            'data': _get_std_task_data_payload(data)
+        })
+
+    @register_service_signal('payroll_service.verify_task')
+    def create_verify_payroll_task(self, payroll_id, obj_data):
+        payroll_to_verify = Payroll.objects.get(id=payroll_id)
+        data = {**obj_data, 'id': payroll_id}
+        TaskService(self.user).create({
+            'source': 'payroll_verification',
+            'entity': payroll_to_verify,
+            'status': Task.Status.RECEIVED,
+            'executor_action_event': TasksManagementConfig.default_executor_event,
+            'business_event': PayrollConfig.payroll_verify_event,
             'data': _get_std_task_data_payload(data)
         })
 
@@ -187,7 +200,7 @@ class PayrollService(BaseService):
             for criterion in json_ext.get("advanced_criteria", [])
         ] if json_ext else []
 
-        beneficiaries_queryset = Beneficiary.objects.filter(
+        beneficiaries_queryset = GroupBeneficiary.objects.filter(
             benefit_plan__id=payment_plan.benefit_plan.id,
             status=BeneficiaryStatus.ACTIVE,
             is_deleted=False,

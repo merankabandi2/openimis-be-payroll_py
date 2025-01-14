@@ -18,19 +18,20 @@ DEFAULT_CONFIG = {
     "gql_csv_reconciliation_search_perms": ["206001"],
     "gql_csv_reconciliation_create_perms": ["206002"],
     "payroll_accept_event": "payroll.accept_payroll",
+    "payroll_verify_event": "payroll.verify_payroll",
     "payroll_reconciliation_event": "payroll.payroll_reconciliation",
     "payroll_reject_event": "payroll.payroll_reject",
     "csv_reconciliation_field_mapping": {
-        'payrollbenefitconsumption__payroll__name': 'Payroll Name',
-        'payrollbenefitconsumption__payroll__status': 'Payroll Status',
-        'individual__first_name': 'First Name',
-        'individual__last_name': 'Last Name',
-        'individual__dob': 'Date of Birth',
+        'individual__groupindividuals__group__location__parent__parent__name': 'province',
+        'individual__groupindividuals__group__location__parent__name': 'commune',
+        'individual__groupindividuals__group__location__name': 'colline',
+        'individual__first_name': 'prenom',
+        'individual__last_name': 'nom',
+        'individual__json_ext__ci': 'num_cni',
+        'individual__dob': 'naissance_date',
+        'individual__json_ext__sexe': 'genre',
         'code': 'Code',
-        'status': 'Status',
         'amount': 'Amount',
-        'type': 'Type',
-        'receipt': 'Receipt',
     },
     "csv_reconciliation_status_column": "Status",
     "csv_reconciliation_paid_extra_field": "Paid",
@@ -68,6 +69,7 @@ class PayrollConfig(AppConfig):
     gql_payroll_delete_perms = None
     gql_csv_reconciliation_search_perms = None
     gql_csv_reconciliation_create_perms = None
+    payroll_verify_event = None
     payroll_accept_event = None
     payroll_reconciliation_event = None
     payroll_reject_event = None

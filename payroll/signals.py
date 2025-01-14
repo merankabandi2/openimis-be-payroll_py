@@ -17,6 +17,44 @@ imis_modules = openimis_apps()
 
 
 def bind_service_signals():
+    def on_task_complete_verify_payroll(**kwargs):
+        def verify_payroll(payroll, strategy, user):
+            if strategy:
+                strategy.verify_payroll(payroll, user)
+                data = {
+                    "id": payroll.id,
+                    "name": payroll.name,
+                    "status": payroll.status,
+                    "date_valid_to": payroll.date_valid_to,
+                    "payment_method": payroll.payment_method,
+                    "date_valid_from": payroll.date_valid_from,
+                    "payment_plan_id": payroll.payment_plan_id,
+                    "payment_cycle_id": payroll.payment_cycle_id,
+                    "payment_point_id": payroll.payment_point_id
+                }
+                PayrollService(user).create_accept_payroll_task(payroll.id, data)
+
+        def reject_payroll(payroll, strategy, user):
+            if strategy:
+                strategy.reject_payroll(payroll, user)
+
+        try:
+            result = kwargs.get('result', None)
+            task = result['data']['task']
+            user = User.objects.get(id=result['data']['user']['id'])
+            if result \
+                    and result['success'] \
+                    and task['business_event'] == PayrollConfig.payroll_verify_event:
+                task_status = task['status']
+                payroll = Payroll.objects.get(id=task['entity_id'])
+                strategy = PaymentMethodStorage.get_chosen_payment_method(payroll.payment_method)
+                if task_status == Task.Status.COMPLETED:
+                    verify_payroll(payroll, strategy, user)
+                if task_status == Task.Status.FAILED:
+                    reject_payroll(payroll, strategy, user)
+        except Exception as exc:
+            logger.error("Error while executing on_task_complete_verify_payroll", exc_info=exc)
+
     def on_task_complete_accept_payroll(**kwargs):
         def accept_payroll(payroll, strategy, user):
             if strategy:
@@ -121,6 +159,12 @@ def bind_service_signals():
                     benefit.save(username=user.username)
         except Exception as exc:
             logger.error("Error while executing on_task_complete_delete_benefit", exc_info=exc)
+
+    bind_service_signal(
+        'task_service.complete_task',
+        on_task_complete_verify_payroll,
+        bind_type=ServiceSignalBindType.AFTER
+    )
 
     bind_service_signal(
         'task_service.complete_task',
