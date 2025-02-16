@@ -8,14 +8,16 @@ from core.gql.gql_mutations.base_mutation import BaseHistoryModelCreateMutationM
     BaseHistoryModelUpdateMutationMixin, BaseHistoryModelDeleteMutationMixin
 from core.schema import OpenIMISMutation
 from payroll.apps import PayrollConfig
-from payroll.models import PaymentPoint, Payroll, PayrollStatus, PayrollMutation
+from payroll.models import PaymentPoint, Payroll, PayrollStatus, PayrollMutation, BenefitConsumption
 from payroll.services import PaymentPointService, PayrollService, BenefitConsumptionService
 
 
 class CreatePaymentPointInputType(OpenIMISMutation.Input):
     name = graphene.String(required=True, max_length=255)
     location_id = graphene.Int(required=True)
-    ppm_id = graphene.UUID(required=True)
+    ppm_id = graphene.UUID(required=False)
+    payment_method = graphene.String(required=False, max_length=255)
+    json_ext = graphene.JSONString(required=False)
 
 
 class UpdatePaymentPointInputType(CreatePaymentPointInputType):
@@ -23,6 +25,10 @@ class UpdatePaymentPointInputType(CreatePaymentPointInputType):
 
 
 class DeletePaymentPointInputType(OpenIMISMutation.Input):
+    ids = graphene.List(graphene.UUID, required=True)
+
+
+class RejectBenefitConsumptionInputType(OpenIMISMutation.Input):
     ids = graphene.List(graphene.UUID, required=True)
 
 
@@ -45,11 +51,12 @@ class CreatePayrollInput(OpenIMISMutation.Input):
     payment_point_id = graphene.UUID(required=False)
     payment_cycle_id = graphene.UUID(required=False)
     status = graphene.Field(PayrollStatusEnum, required=True)
-    payment_method = graphene.String(required=True, max_length=255)
+    payment_method = graphene.String(required=False, max_length=255)
     from_failed_invoices_payroll_id = graphene.UUID(required=False)
 
     date_valid_from = graphene.Date(required=False)
     date_valid_to = graphene.Date(required=False)
+    location_id = graphene.Int(required=False)
     json_ext = graphene.JSONString(required=False)
 
 
@@ -310,5 +317,34 @@ class DeleteBenefitConsumptionMutation(BaseHistoryModelDeleteMutationMixin, Base
                     service.delete({'id': id})
 
     class Input(DeletePayrollInputType):
+        pass
+
+
+class RejectBenefitConsumptionMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
+    _mutation_class = "RejectBenefitConsumptionMutation"
+    _mutation_module = "payroll"
+    _model = BenefitConsumption
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.has_perms(
+                PayrollConfig.gql_payroll_delete_perms):
+            raise ValidationError("mutation.authentication_required")
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        if "client_mutation_id" in data:
+            data.pop('client_mutation_id')
+        if "client_mutation_label" in data:
+            data.pop('client_mutation_label')
+
+        service = BenefitConsumptionService(user)
+        ids = data.get('ids')
+        if ids:
+            with transaction.atomic():
+                for id in ids:
+                    service.reject({'id': id})
+
+    class Input(RejectBenefitConsumptionInputType):
         pass
 

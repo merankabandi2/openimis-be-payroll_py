@@ -33,6 +33,7 @@ class PaymentPoint(HistoryModel):
     name = models.CharField(max_length=255)
     location = models.ForeignKey(Location, models.DO_NOTHING)
     ppm = models.ForeignKey(User, models.DO_NOTHING, blank=True, null=True)
+    payment_method = models.CharField(max_length=255, blank=True, null=True)
 
 
 class Payroll(HistoryBusinessModel):
@@ -44,6 +45,7 @@ class Payroll(HistoryBusinessModel):
         max_length=100, choices=PayrollStatus.choices, default=PayrollStatus.PENDING_VERIFICATION, null=False
     )
     payment_method = models.CharField(max_length=255, blank=True, null=True)
+    location = models.ForeignKey(Location, models.DO_NOTHING, blank=True, null=True)
 
     def __str__(self):
         return f"Payroll {self.name} - {self.uuid}"

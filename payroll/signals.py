@@ -47,7 +47,7 @@ def bind_service_signals():
                     and task['business_event'] == PayrollConfig.payroll_verify_event:
                 task_status = task['status']
                 payroll = Payroll.objects.get(id=task['entity_id'])
-                strategy = PaymentMethodStorage.get_chosen_payment_method(payroll.payment_method)
+                strategy = PaymentMethodStorage.get_chosen_payment_method(payroll.payment_method or payroll.payment_point.payment_method)
                 if task_status == Task.Status.COMPLETED:
                     verify_payroll(payroll, strategy, user)
                 if task_status == Task.Status.FAILED:
@@ -73,7 +73,7 @@ def bind_service_signals():
                     and task['business_event'] == PayrollConfig.payroll_accept_event:
                 task_status = task['status']
                 payroll = Payroll.objects.get(id=task['entity_id'])
-                strategy = PaymentMethodStorage.get_chosen_payment_method(payroll.payment_method)
+                strategy = PaymentMethodStorage.get_chosen_payment_method(payroll.payment_method or payroll.payment_point.payment_method)
                 if task_status == Task.Status.COMPLETED:
                     accept_payroll(payroll, strategy, user)
                 if task_status == Task.Status.FAILED:
@@ -160,6 +160,27 @@ def bind_service_signals():
         except Exception as exc:
             logger.error("Error while executing on_task_complete_delete_benefit", exc_info=exc)
 
+    def on_task_reject_benefit(**kwargs):
+        def reject_benefit(benefit, user):
+            StrategyOfPaymentInterface.remove_benefit_from_payroll(benefit=benefit)
+        try:
+            result = kwargs.get('result', None)
+            task = result['data']['task']
+            user = User.objects.get(id=result['data']['user']['id'])
+            if result \
+                    and result['success'] \
+                    and task['business_event'] == PayrollConfig.benefit_reject_event:
+                task_status = task['status']
+                if task_status == Task.Status.COMPLETED:
+                    benefit = BenefitConsumption.objects.get(id=task['entity_id'])
+                    reject_benefit(benefit, user)
+                if task_status == Task.Status.FAILED:
+                    benefit = BenefitConsumption.objects.get(id=task['entity_id'])
+                    benefit.status = BenefitConsumptionStatus.ACCEPTED
+                    benefit.save(username=user.username)
+        except Exception as exc:
+            logger.error("Error while executing on_task_complete_reject_benefit", exc_info=exc)
+
     bind_service_signal(
         'task_service.complete_task',
         on_task_complete_verify_payroll,
@@ -193,5 +214,11 @@ def bind_service_signals():
     bind_service_signal(
         'task_service.complete_task',
         on_task_delete_benefit,
+        bind_type=ServiceSignalBindType.AFTER
+    )
+
+    bind_service_signal(
+        'task_service.complete_task',
+        on_task_reject_benefit,
         bind_type=ServiceSignalBindType.AFTER
     )

@@ -40,6 +40,8 @@ class Query(graphene.ObjectType):
         dateValidFrom__Gte=graphene.DateTime(),
         dateValidTo__Lte=graphene.DateTime(),
         client_mutation_id=graphene.String(),
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
     )
 
     bill_by_payroll = OrderedDjangoFilterConnectionField(
@@ -193,6 +195,10 @@ class Query(graphene.ObjectType):
         if client_mutation_id:
             wait_for_mutation(client_mutation_id)
             filters.append(Q(mutations__mutation__client_mutation_id=client_mutation_id))
+
+        parent_location = kwargs.get('parent_location')
+        if parent_location:
+            filters += [get_ancestor_location_filter(parent_location)]
 
         query = Payroll.objects.filter(*filters)
         return gql_optimizer.query(query, info)

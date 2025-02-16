@@ -166,3 +166,13 @@ class StrategyOfPaymentInterface(object,  metaclass=abc.ABCMeta):
                 id__in=benefits,
                 is_deleted=False
             ).delete()
+
+    @classmethod
+    def reject_benefit_in_payroll(cls, benefit):
+        from payroll.models import (
+            BenefitConsumptionStatus
+        )
+
+        if benefit.is_deleted == False:
+            benefit.status = BenefitConsumptionStatus.REJECTED
+            benefit.save()

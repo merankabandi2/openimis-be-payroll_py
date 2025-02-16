@@ -75,7 +75,7 @@ class PayrollService(BaseService):
                 date_valid_from, date_valid_to = self._get_dates_parameter(obj_data)
                 payroll, dict_representation = self._save_payroll(obj_data)
                 if not bool(from_failed_invoices_payroll_id):
-                    beneficiaries_queryset = self._select_beneficiary_based_on_criteria(obj_data, payment_plan)
+                    beneficiaries_queryset = self._select_beneficiary_based_on_location(payroll, payment_plan)
                     self._generate_benefits(
                         payment_plan,
                         beneficiaries_queryset,
@@ -216,6 +216,14 @@ class PayrollService(BaseService):
 
         return beneficiaries_queryset
 
+    def _select_beneficiary_based_on_location(self, payroll, payment_plan):
+        return GroupBeneficiary.objects.filter(
+            benefit_plan__id=payment_plan.benefit_plan.id,
+            status=BeneficiaryStatus.ACTIVE,
+            is_deleted=False,
+            group__location__parent__id=payroll.location.id
+        )
+
     def _generate_benefits(self, payment_plan, beneficiaries_queryset, date_from, date_to, payroll, payment_cycle):
         calculation = get_calculation_object(payment_plan.calculation)
         calculation.calculate_if_active_for_object(
@@ -268,6 +276,22 @@ class BenefitConsumptionService(BaseService):
             'business_event': PayrollConfig.benefit_delete_event,
             'data': _get_std_task_data_payload(data)
         })
+
+    @check_authentication
+    @register_service_signal('benefit_consumption_service.reject')
+    def reject(self, obj_data):
+        benefit_to_reject = BenefitConsumption.objects.get(id=obj_data['id'])
+        benefit_to_reject.status = BenefitConsumptionStatus.REJECTED
+        benefit_to_reject.save(username=self.user.username)
+        # data = {'id': benefit_to_reject.id}
+        # TaskService(self.user).create({
+        #     'source': 'benefit_reject',
+        #     'entity': benefit_to_reject,
+        #     'status': Task.Status.RECEIVED,
+        #     'executor_action_event': TasksManagementConfig.default_executor_event,
+        #     'business_event': PayrollConfig.benefit_reject_event,
+        #     'data': _get_std_task_data_payload(data)
+        # })
 
     @check_authentication
     @register_service_signal('benefit_consumption_service.create_or_update_benefit_attachment')
@@ -342,7 +366,13 @@ class CsvReconciliationService:
                                                                       axis=1)
 
         for _, row in df.iterrows():
-            if not pd.isna(row[PayrollConfig.csv_reconciliation_errors_column]):
+            value = row[PayrollConfig.csv_reconciliation_errors_column]
+            if isinstance(value, (pd.Series, pd.Index)):
+                has_errors = not pd.isna(value).all()
+            else:
+                has_errors = not pd.isna(value)
+
+            if has_errors:
                 skipped_items += 1
             else:
                 affected_rows += 1

@@ -24,6 +24,7 @@ class PaymentPointGQLType(DjangoObjectType):
         filter_fields = {
             "id": ["exact"],
             "name": ["iexact", "istartswith", "icontains"],
+            "payment_method": ["exact", "startswith", "contains"],
             **prefix_filterset("location__", LocationGQLType._meta.filter_fields),
             **prefix_filterset("ppm__", UserGQLType._meta.filter_fields),
 
@@ -105,6 +106,7 @@ class PayrollGQLType(DjangoObjectType):
             **prefix_filterset("payment_point__", PaymentPointGQLType._meta.filter_fields),
             **prefix_filterset("payment_plan__", PaymentPlanGQLType._meta.filter_fields),
             **prefix_filterset("payment_cycle__", PaymentCycleGQLType._meta.filter_fields),
+            **prefix_filterset("location__", LocationGQLType._meta.filter_fields),
 
             "date_created": ["exact", "lt", "lte", "gt", "gte"],
             "date_updated": ["exact", "lt", "lte", "gt", "gte"],

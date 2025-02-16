@@ -23,6 +23,11 @@ class StrategyOnlinePayment(StrategyOfPaymentInterface):
         cls.PAYMENT_GATEWAY = payment_gateway_connector_class()
 
     @classmethod
+    def verify_payroll(cls, payroll, user, **kwargs):
+        from payroll.models import PayrollStatus
+        cls.change_status_of_payroll(payroll, PayrollStatus.PENDING_APPROVAL, user)
+
+    @classmethod
     def accept_payroll(cls, payroll, user, **kwargs):
         cls._process_accepted_payroll(payroll, user, **kwargs)
 
