@@ -4,7 +4,9 @@ from io import BytesIO
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
+from django.db.models import Q
 from django.utils.translation import gettext as _
+from django.utils import timezone
 
 from core import datetime
 from core.custom_filters import CustomFilterWizardStorage
@@ -222,7 +224,7 @@ class PayrollService(BaseService):
             status=BeneficiaryStatus.ACTIVE,
             is_deleted=False,
             group__location__parent__id=payroll.location.id
-        )
+        ) if payroll.location.id else GroupBeneficiary.objects.none()
 
     def _generate_benefits(self, payment_plan, beneficiaries_queryset, date_from, date_to, payroll, payment_cycle):
         calculation = get_calculation_object(payment_plan.calculation)
@@ -302,6 +304,76 @@ class BenefitConsumptionService(BaseService):
         for bill in bills_queryset:
             benefit_attachment = BenefitAttachment(bill_id=bill.id, benefit_id=benefit_id)
             benefit_attachment.save(username=self.user.username)
+
+    @staticmethod
+    def get_benefits_by_payment_point(payment_point_name, status=None):
+        """
+        Get benefits attached to payrolls for the given payment point
+        Optionally filter by status
+        """
+        filters = Q(
+            is_deleted=False,
+            payrollbenefitconsumption__is_deleted=False,
+            payrollbenefitconsumption__payroll__is_deleted=False,
+            payrollbenefitconsumption__payroll__payment_point__name=payment_point_name
+        )
+        
+        if status:
+            filters &= Q(status=status)
+            
+        return BenefitConsumption.objects.filter(filters)
+    
+    @staticmethod
+    def validate_benefit_ownership(benefit_ids, payment_point_name):
+        """
+        Verify the benefits belong to the requesting payment point
+        Returns list of unauthorized benefit IDs
+        """
+        valid_benefits = BenefitConsumption.objects.filter(
+            uuid__in=benefit_ids,
+            is_deleted=False,
+            payrollbenefitconsumption__is_deleted=False,
+            payrollbenefitconsumption__payroll__is_deleted=False,
+            payrollbenefitconsumption__payroll__payment_point__name=payment_point_name
+        ).values_list('uuid', flat=True)
+        
+        valid_benefits_set = set(str(uuid) for uuid in valid_benefits)
+        requested_benefits_set = set(str(uuid) for uuid in benefit_ids)
+        
+        # Return unauthorized benefits
+        return requested_benefits_set - valid_benefits_set
+    
+    @staticmethod
+    def get_benefit_by_id(benefit_id):
+        """Get a benefit by ID or return None"""
+        try:
+            return BenefitConsumption.objects.get(uuid=benefit_id, is_deleted=False)
+        except BenefitConsumption.DoesNotExist:
+            return None
+
+
+    @staticmethod
+    @transaction.atomic
+    def update_benefit_status(benefit, update_data):
+        """
+        Update a benefit's status and related fields
+        Returns dict with update result
+        """
+        if not benefit:
+            raise ValueError("Benefit not found or is deleted")
+            
+        new_status = update_data['new_status']
+        
+        # Update the benefit
+        benefit.status = new_status
+        
+        super().update(benefit)
+        
+        return {
+            'benefit_id': str(benefit.uuid),
+            'status': 'success',
+            'new_status': new_status
+        }
 
 
 class CsvReconciliationService:
