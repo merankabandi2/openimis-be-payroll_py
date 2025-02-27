@@ -165,7 +165,7 @@ class IndividualPaymentRequestData(views.APIView):
     POST: Update status of payment requests
     """
     permission_classes = [TokenHasScope]
-    required_scopes = ['benefit_consumption:read', 'benefit_consumption:write']
+    required_scopes = ['benefit_consumption:read']
 
     def get_required_scopes(self, request):
         """Return appropriate scopes based on request method"""

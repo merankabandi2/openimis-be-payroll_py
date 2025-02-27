@@ -16,7 +16,7 @@ class StrategyOnlinePayment(StrategyOfPaymentInterface):
     PAYMENT_GATEWAY = None
 
     @classmethod
-    def initialize_payment_gateway(cls):
+    def initialize_payment_gateway(cls, paymentpoint=None):
         from payroll.payment_gateway import PaymentGatewayConfig
         gateway_config = PaymentGatewayConfig()
         payment_gateway_connector_class = gateway_config.get_payment_gateway_connector()
@@ -64,6 +64,7 @@ class StrategyOnlinePayment(StrategyOfPaymentInterface):
         from payroll.models import BenefitConsumptionStatus
         for benefit in benefits:
             try:
+                benefit.refresh_from_db()
                 benefit.status = BenefitConsumptionStatus.APPROVE_FOR_PAYMENT
                 benefit.save(username=user.login_name)
             except Exception as e:

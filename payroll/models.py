@@ -47,6 +47,11 @@ class Payroll(HistoryBusinessModel):
     payment_method = models.CharField(max_length=255, blank=True, null=True)
     location = models.ForeignKey(Location, models.DO_NOTHING, blank=True, null=True)
 
+    @property
+    def effective_payment_method(self):
+        """Returns the payroll payment_method if set, otherwise falls back to the payment_point's payment_method."""
+        return self.payment_method or (self.payment_point.payment_method if self.payment_point else None)
+
     def __str__(self):
         return f"Payroll {self.name} - {self.uuid}"
 

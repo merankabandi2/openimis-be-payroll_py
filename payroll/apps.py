@@ -28,7 +28,7 @@ DEFAULT_CONFIG = {
         'individual__first_name': 'prenom',
         'individual__last_name': 'nom',
         'individual__json_ext__ci': 'num_cni',
-        'benefitattachment__bill__code_ext': 'telephone',
+        'json_ext__phoneNumber': 'telephone',
         'individual__dob': 'naissance_date',
         'individual__json_ext__sexe': 'genre',
         'code': 'code',

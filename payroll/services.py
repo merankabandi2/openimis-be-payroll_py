@@ -25,7 +25,7 @@ from payroll.models import (
     BenefitAttachment,
     BenefitConsumptionStatus
 )
-from payroll.tasks import send_requests_to_gateway_payment
+from payroll.tasks import generate_benefits, send_requests_to_gateway_payment
 from payroll.payments_registry import PaymentMethodStorage
 from payroll.validation import PaymentPointValidation, PayrollValidation, BenefitConsumptionValidation
 from payroll.strategies import StrategyOfPaymentInterface
@@ -227,7 +227,8 @@ class PayrollService(BaseService):
         ) if payroll.location.id else GroupBeneficiary.objects.none()
 
     def _generate_benefits(self, payment_plan, beneficiaries_queryset, date_from, date_to, payroll, payment_cycle):
-        calculation = get_calculation_object(payment_plan.calculation)
+        generate_benefits.delay(payment_plan.id, date_from, date_to, payroll.id, payment_cycle.id, self.user.id)
+        """         calculation = get_calculation_object(payment_plan.calculation)
         calculation.calculate_if_active_for_object(
             payment_plan,
             user_id=self.user.id,
@@ -235,7 +236,7 @@ class PayrollService(BaseService):
             beneficiaries_queryset=beneficiaries_queryset,
             payroll=payroll,
             payment_cycle=payment_cycle
-        )
+        ) """
 
     @transaction.atomic
     def _move_benefit_consumptions(self, payroll, from_payroll_id):
@@ -285,15 +286,15 @@ class BenefitConsumptionService(BaseService):
         benefit_to_reject = BenefitConsumption.objects.get(id=obj_data['id'])
         benefit_to_reject.status = BenefitConsumptionStatus.REJECTED
         benefit_to_reject.save(username=self.user.username)
-        # data = {'id': benefit_to_reject.id}
-        # TaskService(self.user).create({
-        #     'source': 'benefit_reject',
-        #     'entity': benefit_to_reject,
-        #     'status': Task.Status.RECEIVED,
-        #     'executor_action_event': TasksManagementConfig.default_executor_event,
-        #     'business_event': PayrollConfig.benefit_reject_event,
-        #     'data': _get_std_task_data_payload(data)
-        # })
+        data = {'id': benefit_to_reject.id}
+        TaskService(self.user).create({
+            'source': 'benefit_reject',
+            'entity': benefit_to_reject,
+            'status': Task.Status.RECEIVED,
+            'executor_action_event': TasksManagementConfig.default_executor_event,
+            'business_event': PayrollConfig.benefit_reject_event,
+            'data': _get_std_task_data_payload(data)
+        })
 
     @check_authentication
     @register_service_signal('benefit_consumption_service.create_or_update_benefit_attachment')
