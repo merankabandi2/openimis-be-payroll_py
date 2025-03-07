@@ -50,32 +50,6 @@ def send_callback_to_openimis(request):
         return Response({'success': False, 'error': str(exc)}, status=500)
 
 
-@api_view(["GET"])
-@permission_classes([check_user_rights(PayrollConfig.gql_payroll_search_perms, )])
-def fetch_beneficiaries_to_pay(request):
-    try:
-        user = request.user
-        payroll_id, response_from_gateway, rejected_bills = \
-            _resolve_send_callback_to_imis_args(request)
-        payroll = Payroll.objects.get(id=payroll_id)
-        strategy = PaymentMethodStorage.get_chosen_payment_method(payroll.payment_method)
-        if strategy:
-            # save the reponse from gateway in openIMIS
-            strategy.acknowledge_of_reponse_view(
-                payroll,
-                response_from_gateway,
-                user,
-                rejected_bills
-            )
-        return Response({'success': True, 'error': None}, status=201)
-    except ValueError as exc:
-        logger.error("Error while sending callback to openIMIS", exc_info=exc)
-        return Response({'success': False, 'error': str(exc)}, status=400)
-    except Exception as exc:
-        logger.error("Unexpected error while sending callback to openIMIS", exc_info=exc)
-        return Response({'success': False, 'error': str(exc)}, status=500)
-
-
 def _resolve_send_callback_to_imis_args(request):
     payroll_id = request.data.get('payroll_id')
     response_from_gateway = request.data.get('response_from_gateway')

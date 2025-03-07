@@ -227,8 +227,7 @@ class PayrollService(BaseService):
         ) if payroll.location.id else GroupBeneficiary.objects.none()
 
     def _generate_benefits(self, payment_plan, beneficiaries_queryset, date_from, date_to, payroll, payment_cycle):
-        generate_benefits.delay(payment_plan.id, date_from, date_to, payroll.id, payment_cycle.id, self.user.id)
-        """         calculation = get_calculation_object(payment_plan.calculation)
+        calculation = get_calculation_object(payment_plan.calculation)
         calculation.calculate_if_active_for_object(
             payment_plan,
             user_id=self.user.id,
@@ -236,7 +235,7 @@ class PayrollService(BaseService):
             beneficiaries_queryset=beneficiaries_queryset,
             payroll=payroll,
             payment_cycle=payment_cycle
-        ) """
+        )
 
     @transaction.atomic
     def _move_benefit_consumptions(self, payroll, from_payroll_id):
