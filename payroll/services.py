@@ -23,7 +23,8 @@ from payroll.models import (
     PayrollBenefitConsumption,
     BenefitConsumption,
     BenefitAttachment,
-    BenefitConsumptionStatus
+    BenefitConsumptionStatus,
+    PayrollStatus
 )
 from payroll.tasks import generate_benefits, send_requests_to_gateway_payment
 from payroll.payments_registry import PaymentMethodStorage
@@ -315,6 +316,7 @@ class BenefitConsumptionService(BaseService):
             is_deleted=False,
             payrollbenefitconsumption__is_deleted=False,
             payrollbenefitconsumption__payroll__is_deleted=False,
+            payrollbenefitconsumption__payroll__status=PayrollStatus.APPROVE_FOR_PAYMENT,
             payrollbenefitconsumption__payroll__payment_point__name=payment_point_name
         )
         
