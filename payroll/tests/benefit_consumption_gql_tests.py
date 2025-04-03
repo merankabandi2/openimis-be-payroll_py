@@ -8,12 +8,11 @@ from location.models import Location
 from payroll.tests.data import gql_benefit_consumption_query
 from core.test_helpers import LogInHelper
 from payroll.schema import Query, Mutation
+from core.models.openimis_graphql_test_case import openIMISGraphQLTestCase, BaseTestContext
 
 
-class BenefitConsumptionGQLTestCase(TestCase):
-    class GQLContext:
-        def __init__(self, user):
-            self.user = user
+class BenefitConsumptionGQLTestCase(openIMISGraphQLTestCase):
+
 
     user = None
     user_unauthorized = None
@@ -32,15 +31,15 @@ class BenefitConsumptionGQLTestCase(TestCase):
             mutation=Mutation
         )
         cls.gql_client = Client(gql_schema)
-        cls.gql_context = cls.GQLContext(cls.user)
-        cls.gql_context_unauthorized = cls.GQLContext(cls.user_unauthorized)
+        cls.gql_context = BaseTestContext(cls.user)
+        cls.gql_context_unauthorized = BaseTestContext(cls.user_unauthorized)
 
     def test_query(self):
-        output = self.gql_client.execute(gql_benefit_consumption_query, context=self.gql_context)
+        output = self.gql_client.execute(gql_benefit_consumption_query, context=self.gql_context.get_request())
         result = output.get('data', {}).get('benefitConsumption', {})
         self.assertTrue(result)
 
     def test_query_unauthorized(self):
-        output = self.gql_client.execute(gql_benefit_consumption_query, context=self.gql_context_unauthorized)
+        output = self.gql_client.execute(gql_benefit_consumption_query, context=self.gql_context_unauthorized.get_request())
         error = next(iter(output.get('errors', [])), {}).get('message', None)
         self.assertTrue(error)
