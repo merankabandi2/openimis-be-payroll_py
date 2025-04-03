@@ -22,12 +22,10 @@ from core.test_helpers import LogInHelper
 from payroll.schema import Query, Mutation
 from social_protection.models import BenefitPlan, Beneficiary, BeneficiaryStatus
 from social_protection.tests.data import service_add_payload
+from core.models.openimis_graphql_test_case import openIMISGraphQLTestCase, BaseTestContext
 
 
-class PayrollGQLTestCase(TestCase):
-    class GQLContext:
-        def __init__(self, user):
-            self.user = user
+class PayrollGQLTestCase(openIMISGraphQLTestCase):
 
     user = None
     user_unauthorized = None
@@ -46,8 +44,8 @@ class PayrollGQLTestCase(TestCase):
             mutation=Mutation
         )
         cls.gql_client = Client(gql_schema)
-        cls.gql_context = cls.GQLContext(cls.user)
-        cls.gql_context_unauthorized = cls.GQLContext(cls.user_unauthorized)
+        cls.gql_context = BaseTestContext(cls.user)
+        cls.gql_context_unauthorized = BaseTestContext(cls.user_unauthorized)
         cls.name = "TestCreatePayroll"
         cls.status = PayrollStatus.PENDING_APPROVAL
         cls.payment_method = "TestPaymentMethod"
@@ -86,12 +84,12 @@ class PayrollGQLTestCase(TestCase):
         ).first()
 
     def test_query(self):
-        output = self.gql_client.execute(gql_payroll_query, context=self.gql_context)
+        output = self.gql_client.execute(gql_payroll_query, context=self.gql_context.get_request())
         result = output.get('data', {}).get('payroll', {})
         self.assertTrue(result)
 
     def test_query_unauthorized(self):
-        output = self.gql_client.execute(gql_payroll_query, context=self.gql_context_unauthorized)
+        output = self.gql_client.execute(gql_payroll_query, context=self.gql_context_unauthorized.get_request())
         error = next(iter(output.get('errors', [])), {}).get('message', None)
         self.assertTrue(error)
 
@@ -109,7 +107,7 @@ class PayrollGQLTestCase(TestCase):
             "paymentPointId": str(self.payment_point.id),
             "clientMutationId": str(uuid.uuid4())
         }
-        output = self.gql_client.execute(gql_payroll_create, context=self.gql_context, variable_values=variables)
+        output = self.gql_client.execute(gql_payroll_create, context=self.gql_context.get_request(), variable_values=variables)
         self.assertEqual(output.get('errors'), None)
 
         return self.payroll_from_db(name)
@@ -125,7 +123,7 @@ class PayrollGQLTestCase(TestCase):
             self.date_valid_from,
             self.date_valid_to,
         )
-        output = self.gql_client.execute(payload, context=self.gql_context)
+        output = self.gql_client.execute(payload, context=self.gql_context.get_request())
         self.assertEqual(output.get('errors'), None)
 
         return self.payroll_from_db(name)
@@ -182,7 +180,7 @@ class PayrollGQLTestCase(TestCase):
         }
 
         output = self.gql_client.execute(
-            gql_payroll_create, context=self.gql_context_unauthorized, variable_values=variables)
+            gql_payroll_create, context=self.gql_context_unauthorized.get_request(), variable_values=variables)
         self.assertFalse(
             Payroll.objects.filter(
                 name=self.name,
@@ -213,7 +211,7 @@ class PayrollGQLTestCase(TestCase):
         # payroll_bill = PayrollBill(payroll=payroll, bill=self.bill)
         # payroll_bill.save(username=self.user.username)
         payload = gql_payroll_delete % json.dumps([str(payroll.id)])
-        output = self.gql_client.execute(payload, context=self.gql_context)
+        output = self.gql_client.execute(payload, context=self.gql_context.get_request())
         self.assertEqual(output.get('errors'), None)
         # FIXME self.assertTrue(Payroll.objects.filter(id=payroll.id, is_deleted=True).exists())
         # FIXME 
@@ -234,7 +232,7 @@ class PayrollGQLTestCase(TestCase):
         payroll_bill = PayrollBill(payroll=payroll, bill=self.bill)
         payroll_bill.save(username=self.user.username)
         payload = gql_payroll_delete % json.dumps([str(payroll.id)])
-        output = self.gql_client.execute(payload, context=self.gql_context_unauthorized)
+        output = self.gql_client.execute(payload, context=self.gql_context_unauthorized.get_request())
         # FIXME look for delete task instead
         # self.assertTrue(Payroll.objects.filter(id=payroll.id, is_deleted=False).exists())
         # self.assertEqual(PayrollBill.objects.filter(payroll=payroll, bill=self.bill).count(), 1)
