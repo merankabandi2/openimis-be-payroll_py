@@ -15,7 +15,7 @@ from rest_framework.pagination import PageNumberPagination
 from oauth2_provider.contrib.rest_framework import TokenHasScope
 
 from core.utils import DefaultStorageFileHandler
-from im_export.views import check_user_rights
+from core.views import check_user_rights
 from payroll.apps import PayrollConfig
 from payroll.models import Payroll, CsvReconciliationUpload, BenefitConsumptionStatus, BenefitConsumption
 from payroll.payments_registry import PaymentMethodStorage
