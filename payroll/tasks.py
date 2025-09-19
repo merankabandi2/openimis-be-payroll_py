@@ -15,7 +15,7 @@ def send_requests_to_gateway_payment(payroll_id, user_id):
     strategy = PaymentMethodStorage.get_chosen_payment_method(payroll.payment_method)
     if strategy:
         user = User.objects.get(id=user_id)
-        strategy.initialize_payment_gateway()
+        strategy.initialize_payment_gateway(payroll.payment_point)
         strategy.make_payment_for_payroll(payroll, user)
 
 
@@ -24,7 +24,7 @@ def send_request_to_reconcile(payroll_id, user_id):
     payroll = Payroll.objects.get(id=payroll_id)
     user = User.objects.get(id=user_id)
     strategy = StrategyOnlinePayment
-    strategy.initialize_payment_gateway()
+    strategy.initialize_payment_gateway(payroll.payment_point)
     strategy.change_status_of_payroll(payroll, PayrollStatus.RECONCILED, user)
     benefits = strategy.get_benefits_attached_to_payroll(payroll, BenefitConsumptionStatus.APPROVE_FOR_PAYMENT)
     payment_gateway_connector = strategy.PAYMENT_GATEWAY

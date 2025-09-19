@@ -16,11 +16,11 @@ class StrategyOnlinePayment(StrategyOfPaymentInterface):
     PAYMENT_GATEWAY = None
 
     @classmethod
-    def initialize_payment_gateway(cls):
+    def initialize_payment_gateway(cls, payment_point=None):
         from payroll.payment_gateway import PaymentGatewayConfig
-        gateway_config = PaymentGatewayConfig()
+        gateway_config = PaymentGatewayConfig(payment_point)
         payment_gateway_connector_class = gateway_config.get_payment_gateway_connector()
-        cls.PAYMENT_GATEWAY = payment_gateway_connector_class()
+        cls.PAYMENT_GATEWAY = payment_gateway_connector_class(payment_point)
 
     @classmethod
     def accept_payroll(cls, payroll, user, **kwargs):

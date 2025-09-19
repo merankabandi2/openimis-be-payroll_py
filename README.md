@@ -158,6 +158,127 @@ Make sure to set the following environment variables in your environment:
 
 You can use either basic authentication or token authentication. Set the following variable accordingly:
 
+## Payment Point-Specific Payment Gateway Configuration
+
+The system supports configuring different payment gateway settings for specific payment points. This feature allows organizations to work with multiple payment providers.
+
+### Configuration Structure
+
+Payment point-specific configurations are defined in the Django settings file under the `PAYMENT_GATEWAYS` dictionary. Each payment point has its own configuration dictionary that can override any of the global payment gateway settings:
+
+```python
+PAYMENT_GATEWAYS = {
+    'payment_point_name_1': {
+        'gateway_base_url': 'https://api.payment-provider1.com/v1/',
+        'endpoint_payment': 'payments',
+        'endpoint_reconciliation': 'reconciliation',
+        'payment_gateway_auth_type': 'token',
+        'payment_gateway_api_key': 'payment_point_1_api_key',
+        'payment_gateway_timeout': 10,
+        'payment_gateway_class': 'payroll.payment_gateway.CustomPaymentGatewayConnector'
+    },
+    'payment_point_name_2': {
+        'gateway_base_url': 'https://api.payment-provider2.com/v2/',
+        'endpoint_payment': 'process-payment',
+        'endpoint_reconciliation': 'verify-payment',
+        'payment_gateway_auth_type': 'basic',
+        'payment_gateway_basic_auth_username': 'payment_point_2_username',
+        'payment_gateway_basic_auth_password': 'payment_point_2_password',
+        'payment_gateway_timeout': 15,
+        'payment_gateway_class': 'payroll.payment_gateway.AlternatePaymentGatewayConnector'
+    }
+}
+```
+
+### Configuration Parameters
+
+Each payment point configuration can include the following parameters:
+
+- **gateway_base_url**: The base URL for the payment gateway API specific to this payment point.
+- **endpoint_payment**: The endpoint for processing payments.
+- **endpoint_reconciliation**: The endpoint for reconciling payments.
+- **payment_gateway_auth_type**: The authentication method ('token' or 'basic').
+- **payment_gateway_api_key**: The API key for token authentication.
+- **payment_gateway_basic_auth_username**: The username for basic authentication.
+- **payment_gateway_basic_auth_password**: The password for basic authentication.
+- **payment_gateway_timeout**: The timeout in seconds for API requests.
+- **payment_gateway_class**: The Python class that implements the payment gateway connector.
+
+### Default Fallback
+
+If a parameter is not specified in the payment point configuration, the system will use the global value defined in `PayrollConfig`.
+
+### How Payment Point Configuration is Applied
+
+When processing a payroll, the system uses the `payment_point` name on the `Payroll` model to determine which configuration to use:
+
+1. If the `payment_point` value matches a key in the `PAYMENT_GATEWAYS` dictionary, the system uses that configuration.
+2. If no matching configuration is found, or if `payment_point` is not set, the system uses the global configuration.
+
+### Custom Payment Gateway Connector Classes
+
+The `payment_gateway_class` parameter allows each payment point to use a different implementation for interacting with the payment gateway. This is particularly useful when different payment points need to integrate with completely different payment providers.
+
+To create a custom connector:
+
+1. Create a class that extends `PaymentGatewayConnector`
+2. Implement the `send_payment` and `reconcile` methods
+3. Specify the fully-qualified class name in the payment point configuration
+
+Example connector implementation:
+
+```python
+from payroll.payment_gateway.payment_gateway_connector import PaymentGatewayConnector
+
+class CustomPaymentGatewayConnector(PaymentGatewayConnector):
+    def send_payment(self, invoice_id, amount, **kwargs):
+        payload = {
+            "reference": str(invoice_id),
+            "amount": float(amount),
+            "currency": "USD"
+        }
+        response = self.send_request(self.config.endpoint_payment, payload)
+        if response and response.status_code == 200:
+            data = response.json()
+            return data.get('status') == 'success'
+        return False
+
+    def reconcile(self, invoice_id, amount, **kwargs):
+        payload = {
+            "reference": str(invoice_id),
+            "amount": float(amount)
+        }
+        response = self.send_request(self.config.endpoint_reconciliation, payload)
+        if response and response.status_code == 200:
+            data = response.json()
+            return {
+                "transaction_id": data.get('transaction_id'),
+                "status": data.get('status'),
+                "timestamp": data.get('timestamp')
+            }
+        return False
+```
+
+### Security Considerations
+
+Payment gateway credentials should be stored securely:
+
+1. Do not hardcode API keys or passwords in your settings file
+2. Use environment variables to store sensitive information
+3. Consider using a secrets management solution for production environments
+
+Example secure configuration:
+
+```python
+PAYMENT_GATEWAYS = {
+    'secure_payment_point': {
+        'gateway_base_url': os.getenv('PAYMENT_POINT_URL'),
+        'payment_gateway_auth_type': 'token',
+        'payment_gateway_api_key': os.getenv('PAYMENT_POINT_API_KEY')
+    }
+}
+```
+
 ## Payment Flow for Online Payroll Payments
 
 When the `payment_method` of a Payroll is set to `StrategyOnlinePayment`, the configuration described below is required for the payment and reconciliation process.
