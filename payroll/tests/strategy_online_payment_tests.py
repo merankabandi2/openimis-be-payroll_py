@@ -84,5 +84,3 @@ class TestStrategyOnlinePayment(TestCase):
         # Verify that _send_payment_data_to_gateway was called with the right parameters
         mock_send_payment.assert_called_once_with(mock_payroll, mock_user)
 
-if __name__ == '__main__':
-    unittest.main()
