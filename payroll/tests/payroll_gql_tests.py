@@ -18,11 +18,12 @@ from payroll.models import Payroll, PayrollBill, PayrollStatus
 from payroll.tests.data import gql_payroll_create, gql_payroll_query, gql_payroll_delete, \
     gql_payroll_create_no_json_ext
 from payroll.tests.helpers import PaymentPointHelper
-from core.test_helpers import LogInHelper
+from core.test_helpers import LogInHelper, create_test_role
 from payroll.schema import Query, Mutation
 from social_protection.models import BenefitPlan, Beneficiary, BeneficiaryStatus
 from social_protection.tests.data import service_add_payload
 from core.models.openimis_graphql_test_case import openIMISGraphQLTestCase, BaseTestContext
+from location.test_helpers import create_basic_test_locations
 
 
 class PayrollGQLTestCase(openIMISGraphQLTestCase):
@@ -37,8 +38,23 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
     def setUpClass(cls):
         super().setUpClass()
 
-        cls.user = LogInHelper().get_or_create_user_api(username='username_authorized', roles=[7])
-        cls.user_unauthorized = LogInHelper().get_or_create_user_api(username='username_unauthorized', roles=[1])
+        # Create test locations
+        create_basic_test_locations()
+
+        # Create test roles
+        authorized_perms = [
+            "gql_payroll_search_perms",
+            "gql_payroll_create_perms",
+            "gql_payroll_delete_perms",
+            "gql_csv_reconciliation_search_perms",
+        ]
+        cls.authorized_role = create_test_role(perm_names=authorized_perms, name="PayrollAuthorizedRole")
+
+        unauthorized_perms = []  # No permissions for unauthorized user
+        cls.unauthorized_role = create_test_role(perm_names=unauthorized_perms, name="PayrollUnauthorizedRole")
+
+        cls.user = LogInHelper().get_or_create_user_api(username='username_authorized', roles=[cls.authorized_role.id])
+        cls.user_unauthorized = LogInHelper().get_or_create_user_api(username='username_unauthorized', roles=[cls.unauthorized_role.id])
         gql_schema = Schema(
             query=Query,
             mutation=Mutation

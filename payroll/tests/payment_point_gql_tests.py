@@ -8,9 +8,10 @@ from location.models import Location
 from payroll.models import PaymentPoint
 from payroll.tests.data import gql_payment_point_query, gql_payment_point_delete, gql_payment_point_update, \
     gql_payment_point_create
-from core.test_helpers import LogInHelper
+from core.test_helpers import LogInHelper, create_test_role
 from payroll.schema import Query, Mutation
 from core.models.openimis_graphql_test_case import openIMISGraphQLTestCase, BaseTestContext
+from location.test_helpers import create_basic_test_locations
 
 
 class PaymentPointGQLTestCase(openIMISGraphQLTestCase):
@@ -26,8 +27,23 @@ class PaymentPointGQLTestCase(openIMISGraphQLTestCase):
     def setUpClass(cls):
         super().setUpClass()
 
-        cls.user = LogInHelper().get_or_create_user_api(username='username_authorized', roles=[7])
-        cls.user_unauthorized = LogInHelper().get_or_create_user_api(username='username_unauthorized', roles=[1])
+        # Create test locations
+        create_basic_test_locations()
+
+        # Create test roles
+        authorized_perms = [
+            "gql_payment_point_search_perms",
+            "gql_payment_point_create_perms",
+            "gql_payment_point_update_perms",
+            "gql_payment_point_delete_perms",
+        ]
+        cls.authorized_role = create_test_role(perm_names=authorized_perms, name="PaymentPointAuthorizedRole")
+
+        unauthorized_perms = []  # No permissions for unauthorized user
+        cls.unauthorized_role = create_test_role(perm_names=unauthorized_perms, name="PaymentPointUnauthorizedRole")
+
+        cls.user = LogInHelper().get_or_create_user_api(username='username_authorized', roles=[cls.authorized_role.id])
+        cls.user_unauthorized = LogInHelper().get_or_create_user_api(username='username_unauthorized', roles=[cls.unauthorized_role.id])
         gql_schema = Schema(
             query=Query,
             mutation=Mutation
