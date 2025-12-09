@@ -99,17 +99,6 @@ def send_partial_reconciliation(payroll_id, user_id):
         strategy.initialize_payment_gateway(payroll.payment_point)
         benefits = strategy.get_benefits_attached_to_payroll(payroll, BenefitConsumptionStatus.ACCEPTED)
         payment_gateway_connector = strategy.PAYMENT_GATEWAY
-        benefits_to_reconcile = []
         for benefit in benefits:
-            is_reconciled = payment_gateway_connector.reconcile(benefit.code, benefit.amount, username=user.login_name)
-            # Initialize json_ext if it is None
-            if benefit.json_ext is None:
-                benefit.json_ext = {}
-            if is_reconciled:
-                new_json_ext = benefit.json_ext.copy() if benefit.json_ext else {}
-                new_json_ext['output_gateway'] = is_reconciled
-                new_json_ext['gateway_reconciliation_success'] = True
-                benefit.json_ext = {**benefit.json_ext, **new_json_ext}
-                benefits_to_reconcile.append(benefit)
-        if benefits_to_reconcile:
-            strategy.reconcile_benefit_consumption(benefits_to_reconcile, user)
+            payment_gateway_connector.reconcile(benefit.code, benefit.amount, username=user.login_name)
+
