@@ -6,7 +6,6 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import Q
 from django.utils.translation import gettext as _
-from django.utils import timezone
 
 from core import datetime
 from core.custom_filters import CustomFilterWizardStorage
@@ -26,14 +25,12 @@ from payroll.models import (
     BenefitConsumptionStatus,
     PayrollStatus
 )
-from payroll.tasks import generate_benefits, send_requests_to_gateway_payment
-from payroll.payments_registry import PaymentMethodStorage
+from payroll.tasks import send_requests_to_gateway_payment
 from payroll.validation import PaymentPointValidation, PayrollValidation, BenefitConsumptionValidation
-from payroll.strategies import StrategyOfPaymentInterface
 from calculation.services import get_calculation_object
 from core.services.utils import output_exception, check_authentication
 from contribution_plan.models import PaymentPlan
-from social_protection.models import Beneficiary, GroupBeneficiary, BeneficiaryStatus
+from social_protection.models import GroupBeneficiary, BeneficiaryStatus
 from tasks_management.apps import TasksManagementConfig
 from tasks_management.models import Task
 from tasks_management.services import TaskService, _get_std_task_data_payload
@@ -226,7 +223,9 @@ class PayrollService(BaseService):
             is_deleted=False,
             group__location__parent__id=payroll.location.id
         ).filter(
-            Q(json_ext__moyen_paiement__agence__isnull=False) & Q(json_ext__moyen_paiement__agence=payroll.payment_point.name)
+            Q(json_ext__moyen_paiement__agence__isnull=False)
+            & Q(json_ext__moyen_paiement__agence=payroll.payment_point.name)
+            & Q(json_ext__moyen_paiement__status='SUCCESS')
         ) if payroll.location.id else GroupBeneficiary.objects.none()
 
     def _generate_benefits(self, payment_plan, beneficiaries_queryset, date_from, date_to, payroll, payment_cycle):
