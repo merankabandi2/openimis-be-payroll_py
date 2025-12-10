@@ -223,9 +223,7 @@ class PayrollService(BaseService):
             is_deleted=False,
             group__location__parent__id=payroll.location.id
         ).filter(
-            Q(json_ext__moyen_paiement__agence__isnull=False)
-            & Q(json_ext__moyen_paiement__agence=payroll.payment_point.name)
-            & Q(json_ext__moyen_paiement__status='SUCCESS')
+            Q(json_ext__moyen_paiement__agence__isnull=False) & Q(json_ext__moyen_paiement__agence=payroll.payment_point.name)
         ) if payroll.location.id else GroupBeneficiary.objects.none()
 
     def _generate_benefits(self, payment_plan, beneficiaries_queryset, date_from, date_to, payroll, payment_cycle):
