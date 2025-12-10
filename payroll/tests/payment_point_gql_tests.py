@@ -2,7 +2,6 @@ import json
 
 from graphene import Schema
 from graphene.test import Client
-from django.test import TestCase
 
 from location.models import Location
 from payroll.models import PaymentPoint
@@ -15,7 +14,6 @@ from location.test_helpers import create_basic_test_locations
 
 
 class PaymentPointGQLTestCase(openIMISGraphQLTestCase):
-
 
     user = None
     user_unauthorized = None
@@ -79,7 +77,7 @@ class PaymentPointGQLTestCase(openIMISGraphQLTestCase):
             json.dumps("Test"),
             self.location.id,
             self.user.id)
-        output = self.gql_client.execute(payload, context=self.gql_context_unauthorized.get_request())
+        self.gql_client.execute(payload, context=self.gql_context_unauthorized.get_request())
         self.assertFalse(PaymentPoint.objects.filter(
             name="Test", location_id=self.location.id, ppm_id=self.user.id, is_deleted=False).exists())
 
@@ -104,7 +102,7 @@ class PaymentPointGQLTestCase(openIMISGraphQLTestCase):
             json.dumps("TestUpdated"),
             payment_point.location.id,
             payment_point.ppm.id)
-        output = self.gql_client.execute(payload, context=self.gql_context_unauthorized.get_request())
+        self.gql_client.execute(payload, context=self.gql_context_unauthorized.get_request())
         self.assertTrue(PaymentPoint.objects.filter(id=payment_point.id, name="Test", is_deleted=False).exists())
         self.assertFalse(
             PaymentPoint.objects.filter(id=payment_point.id, name="TestUpdated", is_deleted=False).exists())
@@ -121,5 +119,6 @@ class PaymentPointGQLTestCase(openIMISGraphQLTestCase):
         payment_point = PaymentPoint(name="Test", location=self.location, ppm=self.user)
         payment_point.save(user=self.user)
         payload = gql_payment_point_delete % json.dumps([str(payment_point.id)])
-        output = self.gql_client.execute(payload, context=self.gql_context_unauthorized.get_request())
+        self.gql_client.execute(payload, context=self.gql_context_unauthorized.get_request())
+        # output = self.gql_client.execute(payload, context=self.gql_context_unauthorized.get_request())
         # FIXME self.assertTrue(PaymentPoint.objects.filter(id=payment_point.id, is_deleted=False).exists())

@@ -1,10 +1,7 @@
-import json
 
 from graphene import Schema
 from graphene.test import Client
-from django.test import TestCase
 
-from location.models import Location
 from payroll.tests.data import gql_benefit_consumption_query
 from core.test_helpers import LogInHelper
 from payroll.schema import Query, Mutation
@@ -12,7 +9,6 @@ from core.models.openimis_graphql_test_case import openIMISGraphQLTestCase, Base
 
 
 class BenefitConsumptionGQLTestCase(openIMISGraphQLTestCase):
-
 
     user = None
     user_unauthorized = None

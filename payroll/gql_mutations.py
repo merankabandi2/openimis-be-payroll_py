@@ -310,4 +310,3 @@ class DeleteBenefitConsumptionMutation(BaseHistoryModelDeleteMutationMixin, Base
 
     class Input(DeletePayrollInputType):
         pass
-

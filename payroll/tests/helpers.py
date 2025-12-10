@@ -1,18 +1,16 @@
-from core.models import User
-from core.services import create_or_update_interactive_user, create_or_update_core_user
 from location.models import Location
 from payroll.models import PaymentPoint
-from payroll.services import PaymentPointService
 from core.test_helpers import LogInHelper
 
 
 class PaymentPointHelper:
     _TEST_DATA_PAYMENT_POINT = None
+
     def __init__(self):
-        self._TEST_DATA_PAYMENT_POINT=        {
-        "name": "TestPaymentPoint",
-        "location": Location.objects.filter(validity_to__isnull=True, type='V').first()
-    }
+        self._TEST_DATA_PAYMENT_POINT = {
+            "name": "TestPaymentPoint",
+            "location": Location.objects.filter(validity_to__isnull=True, type='V').first()
+        }
 
     def get_or_create_payment_point_api(self, **kwargs):
         payment_point = PaymentPoint.objects.filter(name={**self._TEST_DATA_PAYMENT_POINT, **kwargs}["name"]).first()

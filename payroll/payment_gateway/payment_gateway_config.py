@@ -12,7 +12,7 @@ class PaymentGatewayConfig:
     def __init__(self, payment_point=None):
         # Load gateway configuration based on payment point if provided
         gateway_config = self._get_gateway_config(payment_point)
-        
+
         self.gateway_base_url = gateway_config.get('gateway_base_url', PayrollConfig.gateway_base_url)
         self.endpoint_payment = gateway_config.get('endpoint_payment', PayrollConfig.endpoint_payment)
         self.endpoint_reconciliation = gateway_config.get('endpoint_reconciliation', PayrollConfig.endpoint_reconciliation)
@@ -21,7 +21,7 @@ class PaymentGatewayConfig:
         self.basic_auth_username = gateway_config.get('payment_gateway_basic_auth_username', PayrollConfig.payment_gateway_basic_auth_username)
         self.basic_auth_password = gateway_config.get('payment_gateway_basic_auth_password', PayrollConfig.payment_gateway_basic_auth_password)
         self.timeout = gateway_config.get('payment_gateway_timeout', PayrollConfig.payment_gateway_timeout)
-        
+
         # Payment gateway connector implementation class
         self.payment_gateway_class = gateway_config.get('payment_gateway_class', PayrollConfig.payment_gateway_class)
 
@@ -31,7 +31,7 @@ class PaymentGatewayConfig:
         """
         if not payment_point:
             return {}
-        
+
         payment_gateways = getattr(settings, 'PAYMENT_GATEWAYS', {})
         return payment_gateways.get(payment_point.name, {})
 

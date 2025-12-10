@@ -5,7 +5,6 @@ from core.models import HistoryModel, HistoryBusinessModel, User, UUIDModel, Obj
 from core.fields import DateField
 from invoice.models import Bill
 from location.models import Location
-from social_protection.models import BenefitPlan
 from payment_cycle.models import PaymentCycle
 from contribution_plan.models import PaymentPlan
 from individual.models import Individual

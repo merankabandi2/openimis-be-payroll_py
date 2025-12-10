@@ -24,9 +24,7 @@ from payroll.models import (
     BenefitConsumptionStatus
 )
 from payroll.tasks import send_requests_to_gateway_payment
-from payroll.payments_registry import PaymentMethodStorage
 from payroll.validation import PaymentPointValidation, PayrollValidation, BenefitConsumptionValidation
-from payroll.strategies import StrategyOfPaymentInterface
 from calculation.services import get_calculation_object
 from core.services.utils import output_exception, check_authentication
 from contribution_plan.models import PaymentPlan
@@ -328,7 +326,7 @@ class CsvReconciliationService:
         df[PayrollConfig.csv_reconciliation_errors_column] = df.apply(lambda row: self._reconcile_row(payroll, row),
                                                                       axis=1)
 
-        for _, row in df.iterrows():
+        for __, row in df.iterrows():
             if not pd.isna(row[PayrollConfig.csv_reconciliation_errors_column]):
                 skipped_items += 1
             else:
@@ -345,8 +343,9 @@ class CsvReconciliationService:
             in_memory_file = BytesIO()
             df.rename(columns={k: v for k, v in PayrollConfig.csv_reconciliation_field_mapping.items()}, inplace=True)
             df.to_csv(in_memory_file, index=False)
-            return in_memory_file, error_df.set_index(PayrollConfig.csv_reconciliation_code_column)\
-                                   [PayrollConfig.csv_reconciliation_errors_column].to_dict(), summary
+            return in_memory_file, error_df.set_index(PayrollConfig.csv_reconciliation_code_column)[
+                PayrollConfig.csv_reconciliation_errors_column
+            ].to_dict(), summary
         return file, None, summary
 
     def _get_benefit_consumption_qs(self, payroll):

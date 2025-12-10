@@ -1,13 +1,10 @@
 import json
 import uuid
 from datetime import datetime, timedelta
-from core.models import MutationLog
 
-from graphene import JSONString, Schema
+from graphene import Schema
 from graphene.test import Client
-from django.test import TestCase
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import Q
 
 from contribution_plan.models import PaymentPlan
 from individual.models import Individual
@@ -120,7 +117,6 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
             "dateValidFrom": self.date_valid_from,
             "dateValidTo": self.date_valid_to,
             "jsonExt": json_ext,
-            "paymentPointId": str(self.payment_point.id),
             "clientMutationId": str(uuid.uuid4())
         }
         output = self.gql_client.execute(gql_payroll_create, context=self.gql_context.get_request(), variable_values=variables)
@@ -195,7 +191,7 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
             "clientMutationId": str(uuid.uuid4())
         }
 
-        output = self.gql_client.execute(
+        self.gql_client.execute(
             gql_payroll_create, context=self.gql_context_unauthorized.get_request(), variable_values=variables)
         self.assertFalse(
             Payroll.objects.filter(
@@ -230,7 +226,6 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
         output = self.gql_client.execute(payload, context=self.gql_context.get_request())
         self.assertEqual(output.get('errors'), None)
         # FIXME self.assertTrue(Payroll.objects.filter(id=payroll.id, is_deleted=True).exists())
-        # FIXME 
         # self.assertEqual(PayrollBill.objects.filter(payroll=payroll, bill=self.bill).count(), 0)
 
     def test_delete_unauthorized(self):
@@ -248,7 +243,8 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
         payroll_bill = PayrollBill(payroll=payroll, bill=self.bill)
         payroll_bill.save(user=self.user)
         payload = gql_payroll_delete % json.dumps([str(payroll.id)])
-        output = self.gql_client.execute(payload, context=self.gql_context_unauthorized.get_request())
+        self.gql_client.execute(payload, context=self.gql_context_unauthorized.get_request())
+        # output = self.gql_client.execute(payload, context=self.gql_context_unauthorized.get_request())
         # FIXME look for delete task instead
         # self.assertTrue(Payroll.objects.filter(id=payroll.id, is_deleted=False).exists())
         # self.assertEqual(PayrollBill.objects.filter(payroll=payroll, bill=self.bill).count(), 1)
@@ -279,7 +275,7 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
                 'calculation_rule': {
                     'fixed_batch': 2,
                     'limit_per_single_transaction': 100
-                } 
+                }
             },
         }
 
@@ -290,8 +286,8 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
     @classmethod
     def __create_payment_cycle(cls):
         pc = PaymentCycle(
-            start_date='2023-02-01', 
-            end_date='2023-03-01', 
+            start_date='2023-02-01',
+            end_date='2023-03-01',
             type=ContentType.objects.get_for_model(BenefitPlan),
             code=str(datetime.now()))
         pc.save(username=cls.user.username)
