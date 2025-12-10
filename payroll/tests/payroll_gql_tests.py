@@ -223,9 +223,9 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
                           date_valid_to=self.date_valid_to,
                           json_ext=json.loads(self.json_ext_able_bodied_false),
                           )
-        payroll.save(username=self.user.username)
+        payroll.save(user=self.user)
         # payroll_bill = PayrollBill(payroll=payroll, bill=self.bill)
-        # payroll_bill.save(username=self.user.username)
+        # payroll_bill.save(user=self.user)
         payload = gql_payroll_delete % json.dumps([str(payroll.id)])
         output = self.gql_client.execute(payload, context=self.gql_context.get_request())
         self.assertEqual(output.get('errors'), None)
@@ -244,9 +244,9 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
                           date_valid_to=self.date_valid_to,
                           json_ext=json.loads(self.json_ext_able_bodied_true),
                           )
-        payroll.save(username=self.user.username)
+        payroll.save(user=self.user)
         payroll_bill = PayrollBill(payroll=payroll, bill=self.bill)
-        payroll_bill.save(username=self.user.username)
+        payroll_bill.save(user=self.user)
         payload = gql_payroll_delete % json.dumps([str(payroll.id)])
         output = self.gql_client.execute(payload, context=self.gql_context_unauthorized.get_request())
         # FIXME look for delete task instead

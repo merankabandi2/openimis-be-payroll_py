@@ -85,7 +85,7 @@ class PaymentPointGQLTestCase(openIMISGraphQLTestCase):
 
     def test_update(self):
         payment_point = PaymentPoint(name="Test", location=self.location, ppm=self.user)
-        payment_point.save(username=self.user.username)
+        payment_point.save(user=self.user)
         payload = gql_payment_point_update % (
             json.dumps(str(payment_point.id)),
             json.dumps("TestUpdated"),
@@ -98,7 +98,7 @@ class PaymentPointGQLTestCase(openIMISGraphQLTestCase):
 
     def test_update_unauthorized(self):
         payment_point = PaymentPoint(name="Test", location=self.location, ppm=self.user)
-        payment_point.save(username=self.user.username)
+        payment_point.save(user=self.user)
         payload = gql_payment_point_update % (
             json.dumps(str(payment_point.id)),
             json.dumps("TestUpdated"),
@@ -111,7 +111,7 @@ class PaymentPointGQLTestCase(openIMISGraphQLTestCase):
 
     def test_delete(self):
         payment_point = PaymentPoint(name="Test", location=self.location, ppm=self.user)
-        payment_point.save(username=self.user.username)
+        payment_point.save(user=self.user)
         payload = gql_payment_point_delete % json.dumps([str(payment_point.id)])
         output = self.gql_client.execute(payload, context=self.gql_context.get_request())
         self.assertEqual(output.get('errors'), None)
@@ -119,7 +119,7 @@ class PaymentPointGQLTestCase(openIMISGraphQLTestCase):
 
     def test_delete_unauthorized(self):
         payment_point = PaymentPoint(name="Test", location=self.location, ppm=self.user)
-        payment_point.save(username=self.user.username)
+        payment_point.save(user=self.user)
         payload = gql_payment_point_delete % json.dumps([str(payment_point.id)])
         output = self.gql_client.execute(payload, context=self.gql_context_unauthorized.get_request())
         # FIXME self.assertTrue(PaymentPoint.objects.filter(id=payment_point.id, is_deleted=False).exists())

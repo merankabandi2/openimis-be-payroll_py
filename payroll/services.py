@@ -113,7 +113,7 @@ class PayrollService(BaseService):
     @register_service_signal('payroll_service.attach_benefit_to_payroll')
     def attach_benefit_to_payroll(self, payroll_id, benefit_id):
         payroll_benefit = PayrollBenefitConsumption(payroll_id=payroll_id, benefit_id=benefit_id)
-        payroll_benefit.save(username=self.user.username)
+        payroll_benefit.save(user=self.user)
 
     @register_service_signal('payroll_service.create_task')
     def create_accept_payroll_task(self, payroll_id, obj_data):
@@ -245,7 +245,7 @@ class BenefitConsumptionService(BaseService):
     def delete(self, obj_data):
         benefit_to_delete = BenefitConsumption.objects.get(id=obj_data['id'])
         benefit_to_delete.status = BenefitConsumptionStatus.PENDING_DELETION
-        benefit_to_delete.save(username=self.user.username)
+        benefit_to_delete.save(user=self.user)
         data = {'id': benefit_to_delete.id}
         TaskService(self.user).create({
             'source': 'benefit_delete',
@@ -264,7 +264,7 @@ class BenefitConsumptionService(BaseService):
         # save new bill attachments
         for bill in bills_queryset:
             benefit_attachment = BenefitAttachment(bill_id=bill.id, benefit_id=benefit_id)
-            benefit_attachment.save(username=self.user.username)
+            benefit_attachment.save(user=self.user)
 
 
 class CsvReconciliationService:
