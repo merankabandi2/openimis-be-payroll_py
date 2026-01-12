@@ -4,6 +4,7 @@ from io import BytesIO
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
+from django.db.models import Q
 from django.utils.translation import gettext as _
 
 from core import datetime
@@ -181,11 +182,7 @@ class PayrollService(BaseService):
         return date_valid_from, date_valid_to
 
     def _select_beneficiary_based_on_criteria(self, obj_data, payment_plan):
-        json_ext = obj_data.get("json_ext")
-        custom_filters = [
-            criterion["custom_filter_condition"]
-            for criterion in json_ext.get("advanced_criteria", [])
-        ] if json_ext else []
+        json_ext = obj_data.get("json_ext", {})
 
         beneficiaries_queryset = Beneficiary.objects.filter(
             benefit_plan__id=payment_plan.benefit_plan.id,
@@ -193,6 +190,28 @@ class PayrollService(BaseService):
             is_deleted=False,
         )
 
+        filter_criteria = json_ext.get("filter_criteria", {})
+
+        project_ids = filter_criteria.get("project_ids", [])
+        if project_ids:
+            beneficiaries_queryset = beneficiaries_queryset.filter(
+                project__id__in=project_ids
+            )
+
+        location_ids = filter_criteria.get("location_ids", [])
+        if location_ids:
+            # TODO: check performance
+            beneficiaries_queryset = beneficiaries_queryset.filter(
+                Q(individual__location_id__in=location_ids) |
+                Q(individual__location__parent_id__in=location_ids) |
+                Q(individual__location__parent__parent_id__in=location_ids) |
+                Q(individual__location__parent__parent__parent_id__in=location_ids)
+            )
+
+        custom_filters = [
+            criterion["custom_filter_condition"]
+            for criterion in json_ext.get("advanced_criteria", [])
+        ]
         if custom_filters:
             beneficiaries_queryset = CustomFilterWizardStorage.build_custom_filters_queryset(
                 PayrollConfig.name,
