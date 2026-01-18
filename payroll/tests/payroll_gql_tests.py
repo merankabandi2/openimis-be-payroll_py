@@ -190,7 +190,7 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
     def test_create_with_location_filter(self):
         json_ext = json.dumps({
             "filter_criteria": {
-                "location_ids": [str(self.district.id)]
+                "location_ids": [str(self.district.uuid)]
             }
         })
         payroll = self.create_payroll(f"{self.name}_location", json_ext)
@@ -213,7 +213,7 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
     def test_create_with_location_hierarchy_filter(self):
         json_ext = json.dumps({
             "filter_criteria": {
-                "location_ids": [str(self.ward.id)]
+                "location_ids": [str(self.ward.uuid)]
             }
         })
         payroll = self.create_payroll(f"{self.name}_location_hierarchy", json_ext)
@@ -237,7 +237,7 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
         json_ext = json.dumps({
             "filter_criteria": {
                 "project_ids": [str(self.project_1.id)],
-                "location_ids": [str(self.other_location.id)]
+                "location_ids": [str(self.other_location.uuid)]
             }
         })
         payroll = self.create_payroll(f"{self.name}_combined", json_ext)

@@ -200,12 +200,11 @@ class PayrollService(BaseService):
 
         location_ids = filter_criteria.get("location_ids", [])
         if location_ids:
-            # TODO: check performance
             beneficiaries_queryset = beneficiaries_queryset.filter(
-                Q(individual__location_id__in=location_ids) |
-                Q(individual__location__parent_id__in=location_ids) |
-                Q(individual__location__parent__parent_id__in=location_ids) |
-                Q(individual__location__parent__parent__parent_id__in=location_ids)
+                Q(individual__location__uuid__in=location_ids) |
+                Q(individual__location__parent__uuid__in=location_ids) |
+                Q(individual__location__parent__parent__uuid__in=location_ids) |
+                Q(individual__location__parent__parent__parent__uuid__in=location_ids)
             )
 
         custom_filters = [
