@@ -60,7 +60,6 @@ if 'opensearch_reports' in apps.app_configs and not is_unit_test_env:
             elif isinstance(related_instance, PaymentCycle):
                 return Payroll.objects.filter(payment_cycle=related_instance)
 
-
     @registry.register_document
     class BenefitConsumptionDocument(BaseSyncDocument):
         DASHBOARD_NAME = 'Payment'
@@ -100,7 +99,6 @@ if 'opensearch_reports' in apps.app_configs and not is_unit_test_env:
             if isinstance(related_instance, Individual):
                 return BenefitConsumption.objects.filter(individual=related_instance)
 
-
     @registry.register_document
     class PayrollBenefitConsumptionDocument(BaseSyncDocument):
         DASHBOARD_NAME = 'Payment'
@@ -129,11 +127,13 @@ if 'opensearch_reports' in apps.app_configs and not is_unit_test_env:
             'amount': opensearch_fields.KeywordField(),
             'photo': opensearch_fields.KeywordField(),
             'date_due': opensearch_fields.DateField(),
-            'individual': opensearch_fields.ObjectField(properties={
-              'first_name': opensearch_fields.KeywordField(),
-              'last_name': opensearch_fields.KeywordField(),
-              'dob': opensearch_fields.DateField(),
-            })
+            'individual': opensearch_fields.ObjectField(
+                properties={
+                    'first_name': opensearch_fields.KeywordField(),
+                    'last_name': opensearch_fields.KeywordField(),
+                    'dob': opensearch_fields.DateField(),
+                }
+            )
         })
 
         class Index:
@@ -157,7 +157,6 @@ if 'opensearch_reports' in apps.app_configs and not is_unit_test_env:
                 return PayrollBenefitConsumption.objects.filter(payroll=related_instance)
             elif isinstance(related_instance, BenefitConsumption):
                 return PayrollBenefitConsumption.objects.filter(benefit=related_instance)
-
 
     @registry.register_document
     class BenefitAttachmentDocument(BaseSyncDocument):

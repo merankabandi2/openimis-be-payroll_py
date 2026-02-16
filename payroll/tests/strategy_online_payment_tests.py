@@ -1,5 +1,4 @@
-import unittest
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 from django.test import TestCase, override_settings
 
 from payroll.strategies.strategy_online_payment import StrategyOnlinePayment
@@ -53,10 +52,10 @@ class TestStrategyOnlinePayment(TestCase):
     def test_initialize_payment_gateway_without_payment_point(self, mock_payroll_config):
         # Set up default gateway configuration
         mock_payroll_config.payment_gateway_class = 'payroll.tests.strategy_online_payment_tests.DefaultPaymentGatewayConnector'
-        
+
         # Initialize without a payment point
         StrategyOnlinePayment.initialize_payment_gateway()
-        
+
         # Check if the correct gateway connector is used
         self.assertIsInstance(StrategyOnlinePayment.PAYMENT_GATEWAY, DefaultPaymentGatewayConnector)
 
@@ -64,7 +63,7 @@ class TestStrategyOnlinePayment(TestCase):
     def test_initialize_payment_gateway_with_custom_payment_point(self):
         # Initialize with a payment point that has custom configuration
         StrategyOnlinePayment.initialize_payment_gateway(self.mock_custom_payment_point)
-        
+
         # Check if the correct gateway connector is used
         self.assertIsInstance(StrategyOnlinePayment.PAYMENT_GATEWAY, CustomPaymentGatewayConnector)
 
@@ -73,14 +72,13 @@ class TestStrategyOnlinePayment(TestCase):
     def test_make_payment_with_custom_payment_point(self, mock_send_payment):
         # Initialize with custom payment point
         StrategyOnlinePayment.initialize_payment_gateway(self.mock_custom_payment_point)
-        
+
         # Create mock payroll and user
         mock_payroll = MagicMock()
         mock_user = MagicMock()
-        
+
         # Call make_payment_for_payroll method
         StrategyOnlinePayment.make_payment_for_payroll(mock_payroll, mock_user)
-        
+
         # Verify that _send_payment_data_to_gateway was called with the right parameters
         mock_send_payment.assert_called_once_with(mock_payroll, mock_user)
-

@@ -1,18 +1,14 @@
-import json
 
 from graphene import Schema
 from graphene.test import Client
-from django.test import TestCase
 
-from location.models import Location
 from payroll.tests.data import gql_benefit_consumption_query
-from core.test_helpers import LogInHelper
+from core.test_helpers import create_admin_role, create_test_interactive_user, create_test_role
 from payroll.schema import Query, Mutation
 from core.models.openimis_graphql_test_case import openIMISGraphQLTestCase, BaseTestContext
 
 
 class BenefitConsumptionGQLTestCase(openIMISGraphQLTestCase):
-
 
     user = None
     user_unauthorized = None
@@ -24,8 +20,8 @@ class BenefitConsumptionGQLTestCase(openIMISGraphQLTestCase):
     def setUpClass(cls):
         super().setUpClass()
 
-        cls.user = LogInHelper().get_or_create_user_api(username='username_authorized')
-        cls.user_unauthorized = LogInHelper().get_or_create_user_api(username='username_unauthorized', roles=[1])
+        cls.user = create_test_interactive_user(username='username_authorized', roles=[create_admin_role().id])
+        cls.user_unauthorized = create_test_interactive_user(username='username_unauthorized', roles=[create_test_role([], name="Empty role").id])
         gql_schema = Schema(
             query=Query,
             mutation=Mutation

@@ -1,7 +1,7 @@
 import abc
 
 
-class StrategyOfPaymentInterface(object,  metaclass=abc.ABCMeta):
+class StrategyOfPaymentInterface(object, metaclass=abc.ABCMeta):
 
     @classmethod
     def initialize_payment_gateway(cls, payment_point=None):
