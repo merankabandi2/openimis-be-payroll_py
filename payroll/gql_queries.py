@@ -1,10 +1,8 @@
 import graphene
-from django.db.models import Sum, Q
 from graphene_django import DjangoObjectType
 
 from core import prefix_filterset, ExtendedConnection
 from core.gql_queries import UserGQLType
-from core.utils import DefaultStorageFileHandler
 from invoice.gql.gql_types.bill_types import BillGQLType
 from location.gql_queries import LocationGQLType
 from individual.gql_queries import IndividualGQLType

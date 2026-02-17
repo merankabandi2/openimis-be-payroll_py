@@ -25,9 +25,7 @@ from payroll.models import (
     BenefitConsumptionStatus
 )
 from payroll.tasks import send_requests_to_gateway_payment
-from payroll.payments_registry import PaymentMethodStorage
 from payroll.validation import PaymentPointValidation, PayrollValidation, BenefitConsumptionValidation
-from payroll.strategies import StrategyOfPaymentInterface
 from calculation.services import get_calculation_object
 from core.services.utils import output_exception, check_authentication
 from contribution_plan.models import PaymentPlan
@@ -114,7 +112,7 @@ class PayrollService(BaseService):
     @register_service_signal('payroll_service.attach_benefit_to_payroll')
     def attach_benefit_to_payroll(self, payroll_id, benefit_id):
         payroll_benefit = PayrollBenefitConsumption(payroll_id=payroll_id, benefit_id=benefit_id)
-        payroll_benefit.save(username=self.user.username)
+        payroll_benefit.save(user=self.user)
 
     @register_service_signal('payroll_service.create_task')
     def create_accept_payroll_task(self, payroll_id, obj_data):
@@ -263,7 +261,7 @@ class BenefitConsumptionService(BaseService):
     def delete(self, obj_data):
         benefit_to_delete = BenefitConsumption.objects.get(id=obj_data['id'])
         benefit_to_delete.status = BenefitConsumptionStatus.PENDING_DELETION
-        benefit_to_delete.save(username=self.user.username)
+        benefit_to_delete.save(user=self.user)
         data = {'id': benefit_to_delete.id}
         TaskService(self.user).create({
             'source': 'benefit_delete',
@@ -282,7 +280,7 @@ class BenefitConsumptionService(BaseService):
         # save new bill attachments
         for bill in bills_queryset:
             benefit_attachment = BenefitAttachment(bill_id=bill.id, benefit_id=benefit_id)
-            benefit_attachment.save(username=self.user.username)
+            benefit_attachment.save(user=self.user)
 
 
 class CsvReconciliationService:
@@ -346,7 +344,7 @@ class CsvReconciliationService:
         df[PayrollConfig.csv_reconciliation_errors_column] = df.apply(lambda row: self._reconcile_row(payroll, row),
                                                                       axis=1)
 
-        for _, row in df.iterrows():
+        for __, row in df.iterrows():
             if not pd.isna(row[PayrollConfig.csv_reconciliation_errors_column]):
                 skipped_items += 1
             else:
@@ -363,8 +361,9 @@ class CsvReconciliationService:
             in_memory_file = BytesIO()
             df.rename(columns={k: v for k, v in PayrollConfig.csv_reconciliation_field_mapping.items()}, inplace=True)
             df.to_csv(in_memory_file, index=False)
-            return in_memory_file, error_df.set_index(PayrollConfig.csv_reconciliation_code_column)\
-                                   [PayrollConfig.csv_reconciliation_errors_column].to_dict(), summary
+            return in_memory_file, error_df.set_index(PayrollConfig.csv_reconciliation_code_column)[
+                PayrollConfig.csv_reconciliation_errors_column
+            ].to_dict(), summary
         return file, None, summary
 
     def _get_benefit_consumption_qs(self, payroll):

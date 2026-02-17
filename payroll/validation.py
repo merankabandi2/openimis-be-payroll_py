@@ -71,7 +71,7 @@ def validate_payroll_unique_name(data, uuid=None):
     name = data.get("name")
     instance = Payroll.objects.filter(name=name, is_deleted=False).first()
     if instance and instance.uuid != uuid:
-        return [{"message": _("payroll.validation.payroll.name_exists" % {
+        return [{"message": _("payroll.validation.payroll.name_exists" % {  # noqa: F504
             'name': name
         })}]
     return []

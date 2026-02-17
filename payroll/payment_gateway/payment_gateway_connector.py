@@ -6,8 +6,8 @@ logger = logging.getLogger(__name__)
 
 
 class PaymentGatewayConnector:
-    def __init__(self):
-        self.config = PaymentGatewayConfig()
+    def __init__(self, payment_point=None):
+        self.config = PaymentGatewayConfig(payment_point)
         self.session = requests.Session()
         self.session.headers.update(self.config.get_headers())
 

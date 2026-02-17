@@ -74,8 +74,8 @@ query q2 {
 
 gql_payroll_filter = """
 query q2 {
-  paymentPoint(name_Iexact: "%s", 
-                paymentPlan_Uuid: "%s", 
+  paymentPoint(name_Iexact: "%s",
+                paymentPlan_Uuid: "%s",
                 paymentPoint_Uuid: "%s"
                 dateValidFrom: "%s"
                 dateValidTo: "%s") {
@@ -101,7 +101,7 @@ mutation m2 {
   createPayroll (input:{
                 name: "%s"
                 paymentCycleId: "%s"
-                paymentPlanId: "%s" 
+                paymentPlanId: "%s"
                 paymentPointId: "%s"
                 paymentMethod: "%s"
                 status: %s

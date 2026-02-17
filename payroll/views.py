@@ -67,7 +67,7 @@ class CSVReconciliationAPIView(views.APIView):
             if get_blank_bool:
                 service = CsvReconciliationService(request.user)
                 in_memory_file = service.download_reconciliation(payroll_id)
-                response = Response(headers={'Content-Disposition': f'attachment; filename="reconciliation.csv"'},
+                response = Response(headers={'Content-Disposition': 'attachment; filename="reconciliation.csv"'},
                                     content_type='text/csv')
                 response.content = in_memory_file.getvalue()
                 return response

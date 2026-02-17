@@ -1,13 +1,10 @@
 import json
 import uuid
 from datetime import datetime, timedelta
-from core.models import MutationLog
 
-from graphene import JSONString, Schema
+from graphene import Schema
 from graphene.test import Client
-from django.test import TestCase
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import Q
 
 from contribution_plan.models import PaymentPlan
 from individual.models import Individual
@@ -18,13 +15,14 @@ from payroll.models import Payroll, PayrollBill, PayrollStatus, PayrollBenefitCo
 from payroll.tests.data import gql_payroll_create, gql_payroll_query, gql_payroll_delete, \
     gql_payroll_create_no_json_ext
 from payroll.tests.helpers import PaymentPointHelper
-from core.test_helpers import LogInHelper
+from core.test_helpers import LogInHelper, create_test_role
 from core.models.openimis_graphql_test_case import openIMISGraphQLTestCase, BaseTestContext
 from payroll.schema import Query, Mutation
 from location.test_helpers import create_test_location
 from social_protection.models import BenefitPlan, Beneficiary, BeneficiaryStatus, ProjectStatus
 from social_protection.tests.data import service_add_payload
 from social_protection.tests.test_helpers import create_project
+from location.test_helpers import create_basic_test_locations
 
 
 class PayrollGQLTestCase(openIMISGraphQLTestCase):
@@ -39,8 +37,23 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
     def setUpClass(cls):
         super().setUpClass()
 
-        cls.user = LogInHelper().get_or_create_user_api(username='username_authorized', roles=[7])
-        cls.user_unauthorized = LogInHelper().get_or_create_user_api(username='username_unauthorized', roles=[1])
+        # Create test locations
+        create_basic_test_locations()
+
+        # Create test roles
+        authorized_perms = [
+            "gql_payroll_search_perms",
+            "gql_payroll_create_perms",
+            "gql_payroll_delete_perms",
+            "gql_csv_reconciliation_search_perms",
+        ]
+        cls.authorized_role = create_test_role(perm_names=authorized_perms, name="PayrollAuthorizedRole")
+
+        unauthorized_perms = []  # No permissions for unauthorized user
+        cls.unauthorized_role = create_test_role(perm_names=unauthorized_perms, name="PayrollUnauthorizedRole")
+
+        cls.user = LogInHelper().get_or_create_user_api(username='username_authorized', roles=[cls.authorized_role.id])
+        cls.user_unauthorized = LogInHelper().get_or_create_user_api(username='username_unauthorized', roles=[cls.unauthorized_role.id])
         gql_schema = Schema(
             query=Query,
             mutation=Mutation
@@ -121,7 +134,6 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
             "dateValidFrom": self.date_valid_from,
             "dateValidTo": self.date_valid_to,
             "jsonExt": json_ext,
-            "paymentPointId": str(self.payment_point.id),
             "clientMutationId": str(uuid.uuid4())
         }
         output = self.gql_client.execute(gql_payroll_create, context=self.gql_context.get_request(), variable_values=variables)
@@ -325,7 +337,7 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
             "clientMutationId": str(uuid.uuid4())
         }
 
-        output = self.gql_client.execute(
+        self.gql_client.execute(
             gql_payroll_create, context=self.gql_context_unauthorized.get_request(), variable_values=variables)
         self.assertFalse(
             Payroll.objects.filter(
@@ -353,14 +365,13 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
                           date_valid_to=self.date_valid_to,
                           json_ext=json.loads(self.json_ext_able_bodied_false),
                           )
-        payroll.save(username=self.user.username)
+        payroll.save(user=self.user)
         # payroll_bill = PayrollBill(payroll=payroll, bill=self.bill)
-        # payroll_bill.save(username=self.user.username)
+        # payroll_bill.save(user=self.user)
         payload = gql_payroll_delete % json.dumps([str(payroll.id)])
         output = self.gql_client.execute(payload, context=self.gql_context.get_request())
         self.assertEqual(output.get('errors'), None)
         # FIXME self.assertTrue(Payroll.objects.filter(id=payroll.id, is_deleted=True).exists())
-        # FIXME 
         # self.assertEqual(PayrollBill.objects.filter(payroll=payroll, bill=self.bill).count(), 0)
 
     def test_delete_unauthorized(self):
@@ -374,11 +385,12 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
                           date_valid_to=self.date_valid_to,
                           json_ext=json.loads(self.json_ext_able_bodied_true),
                           )
-        payroll.save(username=self.user.username)
+        payroll.save(user=self.user)
         payroll_bill = PayrollBill(payroll=payroll, bill=self.bill)
-        payroll_bill.save(username=self.user.username)
+        payroll_bill.save(user=self.user)
         payload = gql_payroll_delete % json.dumps([str(payroll.id)])
-        output = self.gql_client.execute(payload, context=self.gql_context_unauthorized.get_request())
+        self.gql_client.execute(payload, context=self.gql_context_unauthorized.get_request())
+        # output = self.gql_client.execute(payload, context=self.gql_context_unauthorized.get_request())
         # FIXME look for delete task instead
         # self.assertTrue(Payroll.objects.filter(id=payroll.id, is_deleted=False).exists())
         # self.assertEqual(PayrollBill.objects.filter(payroll=payroll, bill=self.bill).count(), 1)
@@ -409,7 +421,7 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
                 'calculation_rule': {
                     'fixed_batch': 2,
                     'limit_per_single_transaction': 100
-                } 
+                }
             },
         }
 
@@ -420,8 +432,8 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
     @classmethod
     def __create_payment_cycle(cls):
         pc = PaymentCycle(
-            start_date='2023-02-01', 
-            end_date='2023-03-01', 
+            start_date='2023-02-01',
+            end_date='2023-03-01',
             type=ContentType.objects.get_for_model(BenefitPlan),
             code=str(datetime.now()))
         pc.save(username=cls.user.username)
