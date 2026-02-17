@@ -11,15 +11,17 @@ from individual.models import Individual
 from individual.tests.data import service_add_individual_payload
 from invoice.models import Bill
 from payment_cycle.models import PaymentCycle
-from payroll.models import Payroll, PayrollBill, PayrollStatus
+from payroll.models import Payroll, PayrollBill, PayrollStatus, PayrollBenefitConsumption
 from payroll.tests.data import gql_payroll_create, gql_payroll_query, gql_payroll_delete, \
     gql_payroll_create_no_json_ext
 from payroll.tests.helpers import PaymentPointHelper
 from core.test_helpers import LogInHelper, create_test_role
-from payroll.schema import Query, Mutation
-from social_protection.models import BenefitPlan, Beneficiary, BeneficiaryStatus
-from social_protection.tests.data import service_add_payload
 from core.models.openimis_graphql_test_case import openIMISGraphQLTestCase, BaseTestContext
+from payroll.schema import Query, Mutation
+from location.test_helpers import create_test_location
+from social_protection.models import BenefitPlan, Beneficiary, BeneficiaryStatus, ProjectStatus
+from social_protection.tests.data import service_add_payload
+from social_protection.tests.test_helpers import create_project
 from location.test_helpers import create_basic_test_locations
 
 
@@ -65,11 +67,26 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
         cls.date_valid_from, cls.date_valid_to = cls.__get_start_and_end_of_current_month()
         cls.payment_point = PaymentPointHelper().get_or_create_payment_point_api()
         cls.benefit_plan = cls.__create_benefit_plan()
-        cls.individual = cls.__create_individual()
+
+        cls.region = create_test_location("R", custom_props={"code": "REG-PAYROLL-01"})
+        cls.district = create_test_location("D", custom_props={"code": "DIST-PAYROLL-01", "parent": cls.region})
+        cls.ward = create_test_location("W", custom_props={"code": "WARD-PAYROLL-01", "parent": cls.district})
+        cls.village = create_test_location("V", custom_props={"code": "VILL-PAYROLL-01", "parent": cls.ward})
+        cls.other_location = create_test_location("V", custom_props={"code": "VILL-OTHER-01"})
+
+        cls.project_1 = create_project("Payroll Project 1", cls.benefit_plan, cls.user.username, status=ProjectStatus.COMPLETED)
+        cls.project_2 = create_project("Payroll Project 2", cls.benefit_plan, cls.user.username, status=ProjectStatus.COMPLETED)
+
+        cls.individual = cls.__create_individual(location=None, able_bodied=True)
+        cls.individual_2 = cls.__create_individual(location=cls.village, able_bodied=False)
+        cls.individual_3 = cls.__create_individual(location=cls.other_location, able_bodied=True)
+
         cls.subject_type = ContentType.objects.get_for_model(Beneficiary)
         cls.payment_plan = cls.__create_payment_plan(cls.benefit_plan)
         cls.payment_cycle = cls.__create_payment_cycle()
-        cls.beneficiary = cls.__create_beneficiary()
+        cls.beneficiary = cls.__create_beneficiary(cls.individual, cls.project_1)
+        cls.beneficiary_2 = cls.__create_beneficiary(cls.individual_2, cls.project_2)
+        cls.beneficiary_3 = cls.__create_beneficiary(cls.individual_3, cls.project_1)
         cls.bill = cls.__create_bill()
         cls.json_ext_able_bodied_false = """{"advanced_criteria": [{"custom_filter_condition": "able_bodied__boolean=False"}]}"""
         cls.json_ext_able_bodied_true = """{"advanced_criteria": [{"custom_filter_condition": "able_bodied__boolean=True"}]}"""
@@ -150,19 +167,148 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
         # FIXME
         # self.assertIsNone(payroll)
 
-    # def test_create_fail_due_to_lack_of_bills_for_given_criteria(self):
-    #     payroll = self.create_payroll(self.name, self.json_ext_able_bodied_false)
-    #     self.assertFalse(payroll.exists())
-
     def test_create_no_advanced_criteria(self):
         payroll = self.create_payroll_no_json_ext(self.name)
         self.assertIsNotNone(payroll)
-        self.delete_payroll_and_check_bill(payroll)
 
     def test_create_full(self):
         payroll = self.create_payroll(self.name, self.json_ext_able_bodied_true)
         self.assertIsNotNone(payroll)
-        self.delete_payroll_and_check_bill(payroll)
+
+    def test_create_with_project_filter(self):
+        json_ext = json.dumps({
+            "filter_criteria": {
+                "project_ids": [str(self.project_1.id)]
+            }
+        })
+        payroll = self.create_payroll(f"{self.name}_project", json_ext)
+        self.assertIsNotNone(payroll)
+
+        payroll_benefits = PayrollBenefitConsumption.objects.filter(
+            payroll=payroll,
+            is_deleted=False
+        )
+        individual_ids = set(pb.benefit.individual_id for pb in payroll_benefits if pb.benefit)
+        beneficiaries = Beneficiary.objects.filter(
+            individual_id__in=individual_ids,
+            benefit_plan=self.benefit_plan
+        )
+        beneficiary_ids = set(b.id for b in beneficiaries)
+
+        self.assertIn(self.beneficiary.id, beneficiary_ids)
+        self.assertIn(self.beneficiary_3.id, beneficiary_ids)
+        self.assertNotIn(self.beneficiary_2.id, beneficiary_ids)
+
+    def test_create_with_location_filter(self):
+        json_ext = json.dumps({
+            "filter_criteria": {
+                "location_ids": [str(self.district.uuid)]
+            }
+        })
+        payroll = self.create_payroll(f"{self.name}_location", json_ext)
+        self.assertIsNotNone(payroll)
+
+        payroll_benefits = PayrollBenefitConsumption.objects.filter(
+            payroll=payroll,
+            is_deleted=False
+        )
+        individual_ids = set(pb.benefit.individual_id for pb in payroll_benefits if pb.benefit)
+        beneficiaries = Beneficiary.objects.filter(
+            individual_id__in=individual_ids,
+            benefit_plan=self.benefit_plan
+        )
+        beneficiary_ids = set(b.id for b in beneficiaries)
+        self.assertNotIn(self.beneficiary.id, beneficiary_ids)
+        self.assertIn(self.beneficiary_2.id, beneficiary_ids)
+        self.assertNotIn(self.beneficiary_3.id, beneficiary_ids)
+
+    def test_create_with_location_hierarchy_filter(self):
+        json_ext = json.dumps({
+            "filter_criteria": {
+                "location_ids": [str(self.ward.uuid)]
+            }
+        })
+        payroll = self.create_payroll(f"{self.name}_location_hierarchy", json_ext)
+        self.assertIsNotNone(payroll)
+
+        payroll_benefits = PayrollBenefitConsumption.objects.filter(
+            payroll=payroll,
+            is_deleted=False
+        )
+        individual_ids = set(pb.benefit.individual_id for pb in payroll_benefits if pb.benefit)
+        beneficiaries = Beneficiary.objects.filter(
+            individual_id__in=individual_ids,
+            benefit_plan=self.benefit_plan
+        )
+        beneficiary_ids = set(b.id for b in beneficiaries)
+        self.assertNotIn(self.beneficiary.id, beneficiary_ids)
+        self.assertIn(self.beneficiary_2.id, beneficiary_ids)
+        self.assertNotIn(self.beneficiary_3.id, beneficiary_ids)
+
+    def test_create_with_combined_project_and_location(self):
+        json_ext = json.dumps({
+            "filter_criteria": {
+                "project_ids": [str(self.project_1.id)],
+                "location_ids": [str(self.other_location.uuid)]
+            }
+        })
+        payroll = self.create_payroll(f"{self.name}_combined", json_ext)
+        self.assertIsNotNone(payroll)
+
+        payroll_benefits = PayrollBenefitConsumption.objects.filter(
+            payroll=payroll,
+            is_deleted=False
+        )
+        individual_ids = set(pb.benefit.individual_id for pb in payroll_benefits if pb.benefit)
+        beneficiaries = Beneficiary.objects.filter(
+            individual_id__in=individual_ids,
+            benefit_plan=self.benefit_plan
+        )
+        beneficiary_ids = set(b.id for b in beneficiaries)
+        self.assertIn(self.beneficiary_3.id, beneficiary_ids)
+        self.assertNotIn(self.beneficiary.id, beneficiary_ids)
+        self.assertNotIn(self.beneficiary_2.id, beneficiary_ids)
+
+    def test_create_with_project_and_advanced_criteria(self):
+        json_ext = json.dumps({
+            "filter_criteria": {
+                "project_ids": [str(self.project_1.id), str(self.project_2.id)]
+            },
+            "advanced_criteria": [
+                {"custom_filter_condition": "able_bodied__boolean=True"}
+            ]
+        })
+        payroll = self.create_payroll(f"{self.name}_project_advanced", json_ext)
+        self.assertIsNotNone(payroll)
+
+        payroll_benefits = PayrollBenefitConsumption.objects.filter(
+            payroll=payroll,
+            is_deleted=False
+        )
+        individual_ids = set(pb.benefit.individual_id for pb in payroll_benefits if pb.benefit)
+        beneficiaries = Beneficiary.objects.filter(
+            individual_id__in=individual_ids,
+            benefit_plan=self.benefit_plan
+        )
+        beneficiary_ids = set(b.id for b in beneficiaries)
+        self.assertIn(self.beneficiary.id, beneficiary_ids)
+        self.assertIn(self.beneficiary_3.id, beneficiary_ids)
+        self.assertNotIn(self.beneficiary_2.id, beneficiary_ids)
+
+    def test_create_with_empty_project_ids(self):
+        json_ext = json.dumps({
+            "filter_criteria": {
+                "project_ids": []
+            }
+        })
+        payroll = self.create_payroll(f"{self.name}_empty_project", json_ext)
+        self.assertIsNotNone(payroll)
+
+        payroll_benefits = PayrollBenefitConsumption.objects.filter(
+            payroll=payroll,
+            is_deleted=False
+        )
+        self.assertGreater(payroll_benefits.count(), 0)
 
     def test_create_fail_due_to_empty_name(self):
         payroll = self.create_payroll("", self.json_ext_able_bodied_true)
@@ -294,23 +440,27 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
         return pc
 
     @classmethod
-    def __create_individual(cls):
+    def __create_individual(cls, location=None, able_bodied=True):
         object_data = {
-            **service_add_individual_payload
+            **service_add_individual_payload,
         }
 
-        individual = Individual(**object_data)
-        individual.save(username=cls.user.username)
+        if location:
+            object_data['location'] = location
 
+        individual = Individual(**object_data)
+        individual.json_ext = {"able_bodied": able_bodied}
+        individual.save(username=cls.user.username)
         return individual
 
     @classmethod
-    def __create_beneficiary(cls):
+    def __create_beneficiary(cls, individual, project):
         object_data = {
-            "individual": cls.individual,
+            "individual": individual,
             "benefit_plan": cls.benefit_plan,
-            "json_ext": {"able_bodied": True},
-            "status": BeneficiaryStatus.ACTIVE
+            "json_ext": individual.json_ext,
+            "status": BeneficiaryStatus.ACTIVE,
+            "project": project
         }
         beneficiary = Beneficiary(**object_data)
         beneficiary.save(username=cls.user.username)
