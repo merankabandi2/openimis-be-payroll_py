@@ -74,8 +74,8 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
         cls.village = create_test_location("V", custom_props={"code": "VILL-PAYROLL-01", "parent": cls.ward})
         cls.other_location = create_test_location("V", custom_props={"code": "VILL-OTHER-01"})
 
-        cls.project_1 = create_project("Payroll Project 1", cls.benefit_plan, cls.user.username, status=ProjectStatus.COMPLETED)
-        cls.project_2 = create_project("Payroll Project 2", cls.benefit_plan, cls.user.username, status=ProjectStatus.COMPLETED)
+        cls.project_1 = create_project("Payroll Project 1", cls.benefit_plan, cls.user.username)
+        cls.project_2 = create_project("Payroll Project 2", cls.benefit_plan, cls.user.username)
 
         cls.individual = cls.__create_individual(location=None, able_bodied=True)
         cls.individual_2 = cls.__create_individual(location=cls.village, able_bodied=False)
@@ -92,7 +92,7 @@ class PayrollGQLTestCase(openIMISGraphQLTestCase):
         cls.json_ext_able_bodied_true = """{"advanced_criteria": [{"custom_filter_condition": "able_bodied__boolean=True"}]}"""
         cls.includedUnpaid = False
 
-    def setup(self):
+    def setUp(self):
         payroll = self.payroll_from_db()
         if payroll:
             self.delete_payroll_and_check_bill(payroll)
