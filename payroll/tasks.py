@@ -10,45 +10,33 @@ from payroll.models import (
     PayrollBenefitConsumption,
     BenefitAttachment
 )
-from invoice.models import Bill, BillItem
 from payroll.strategies import StrategyOnlinePayment
 from payroll.payments_registry import PaymentMethodStorage
 from calculation.services import get_calculation_object
 from django.db import transaction
 
-try:
-    from django_opensearch_dsl.registries import registry
-except ImportError:
-    registry = None
-
 logger = logging.getLogger(__name__)
 
 
-
-def _select_beneficiary_based_on_location(payroll, payment_plan):
-    from social_protection.models import BeneficiaryStatus, GroupBeneficiary
-    return GroupBeneficiary.objects.filter(
-        benefit_plan__id=payment_plan.benefit_plan.id,
-        status=BeneficiaryStatus.ACTIVE,
-        is_deleted=False,
-        group__location__parent__id=payroll.location.id
-    ) if payroll.location.id else GroupBeneficiary.objects.none()
 
 @shared_task
 def generate_benefits(payment_plan_id, date_from, date_to, payroll_id, payment_cycle_id, user_id):
     from contribution_plan.models import PaymentPlan
     from payment_cycle.models import PaymentCycle
+    from payroll.services import PayrollService
     try:
         with transaction.atomic():
             payment_plan = PaymentPlan.objects.get(id=payment_plan_id)
             payroll = Payroll.objects.get(id=payroll_id)
             payment_cycle = PaymentCycle.objects.get(id=payment_cycle_id)
+            user = User.objects.get(id=user_id)
+            payroll_service = PayrollService(user)
             calculation = get_calculation_object(payment_plan.calculation)
             calculation.calculate_if_active_for_object(
                 payment_plan,
                 user_id=user_id,
                 start_date=date_from, end_date=date_to,
-                beneficiaries_queryset=_select_beneficiary_based_on_location(payroll, payment_plan),
+                beneficiaries_queryset=payroll_service._select_beneficiary_based_on_location(payroll, payment_plan),
                 payroll=payroll,
                 payment_cycle=payment_cycle
             )
@@ -115,98 +103,4 @@ def send_partial_reconciliation(payroll_id, user_id):
         payment_gateway_connector = strategy.PAYMENT_GATEWAY
         for benefit in benefits:
             payment_gateway_connector.reconcile(benefit.code, benefit.amount, username=user.login_name)
-
-
-@shared_task
-def create_payroll_benefits_task(payroll_id, user_id, obj_data):
-    from payroll.services import PayrollService
-    try:
-        from opensearch_reports.models import OpenSearchDashboard
-    except ImportError:
-        OpenSearchDashboard = None
-
-    dashboards_to_toggle = ['Payment', 'Invoice']
-
-    try:
-        user = User.objects.get(id=user_id)
-        payroll = Payroll.objects.get(id=payroll_id)
-        payroll_service = PayrollService(user)
-
-        if OpenSearchDashboard:
-            OpenSearchDashboard.objects.filter(name__in=dashboards_to_toggle).update(synch_disabled=True)
-
-        try:
-            from_failed_invoices_payroll_id = obj_data.pop("from_failed_invoices_payroll_id", None)
-            payment_plan = payroll_service._get_payment_plan(obj_data)
-            payment_cycle = payroll_service._get_payment_cycle(obj_data)
-            date_valid_from, date_valid_to = payroll_service._get_dates_parameter(obj_data)
-            
-            if not bool(from_failed_invoices_payroll_id):
-                beneficiaries_queryset = _select_beneficiary_based_on_location(payroll, payment_plan)
-                # beneficiaries_queryset = payroll_service._select_beneficiary_based_on_criteria(obj_data, payment_plan)
-                payroll_service._generate_benefits(
-                    payment_plan,
-                    beneficiaries_queryset,
-                    date_valid_from,
-                    date_valid_to,
-                    payroll,
-                    payment_cycle
-                )
-            else:
-                payroll_service._move_benefit_consumptions(payroll, from_failed_invoices_payroll_id)
-                
-            if payroll.status != PayrollStatus.PENDING_APPROVAL:
-                payroll.status = PayrollStatus.PENDING_APPROVAL
-                payroll.save(username=user.login_name)
-            payroll_service.create_accept_payroll_task(payroll.id, obj_data)
-        finally:
-            if OpenSearchDashboard:
-                OpenSearchDashboard.objects.filter(name__in=dashboards_to_toggle).update(synch_disabled=False)
-                _trigger_opensearch_reindex(payroll)
-        
-    except Exception as exc:
-        logger.error(f"Error in create_payroll_benefits_task for payroll {payroll_id}: {exc}", exc_info=exc)
-        try:
-            payroll = Payroll.objects.get(id=payroll_id)
-            payroll.status = PayrollStatus.FAILED
-            if payroll.json_ext is None:
-                payroll.json_ext = {}
-            payroll.json_ext['creation_error'] = str(exc)
-            payroll.save(username=user.login_name)
-        except Exception as e:
-            logger.error(f"Failed to update payroll status to FAILED: {e}")
-        raise
-
-
-def _trigger_opensearch_reindex(payroll):
-    """
-    Manually trigger OpenSearch indexing for all entities related to the payroll.
-    """
-    if not registry:
-        return
-
-    try:
-        registry.update(payroll)
-
-        benefits = BenefitConsumption.objects.filter(payrollbenefitconsumption__payroll=payroll)
-        if benefits.exists():
-            registry.update(benefits)
-
-        pbcs = PayrollBenefitConsumption.objects.filter(payroll=payroll)
-        if pbcs.exists():
-            registry.update(pbcs)
-
-        bills = Bill.objects.filter(benefitattachment__benefit__payrollbenefitconsumption__payroll=payroll).distinct()
-        if bills.exists():
-            registry.update(bills)
-            bill_items = BillItem.objects.filter(bill__in=bills)
-            if bill_items.exists():
-                registry.update(bill_items)
-
-        attachments = BenefitAttachment.objects.filter(benefit__payrollbenefitconsumption__payroll=payroll)
-        if attachments.exists():
-            registry.update(attachments)
-
-    except Exception as e:
-        logger.warning(f"Failed to trigger OpenSearch re-indexing for payroll {payroll.id}: {e}")
 
