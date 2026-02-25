@@ -74,8 +74,8 @@ query q2 {
 
 gql_payroll_filter = """
 query q2 {
-  paymentPoint(name_Iexact: "%s", 
-                paymentPlan_Uuid: "%s", 
+  paymentPoint(name_Iexact: "%s",
+                paymentPlan_Uuid: "%s",
                 paymentPoint_Uuid: "%s"
                 dateValidFrom: "%s"
                 dateValidTo: "%s") {
@@ -101,7 +101,7 @@ mutation m2 {
   createPayroll (input:{
                 name: "%s"
                 paymentCycleId: "%s"
-                paymentPlanId: "%s" 
+                paymentPlanId: "%s"
                 paymentPointId: "%s"
                 paymentMethod: "%s"
                 status: %s
@@ -140,6 +140,7 @@ benefit_consumption_data_update = {
 }
 
 
+
 gql_benefit_consumption_query = """
 query q2 {
   benefitConsumption {
@@ -148,6 +149,15 @@ query q2 {
         id
       }
     }
+  }
+}
+"""
+
+
+gql_payroll_retrigger = """
+mutation retriggerPayroll($id: UUID!) {
+  retriggerPayroll(input: {id: $id}) {
+    clientMutationId
   }
 }
 """

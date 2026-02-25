@@ -1,3 +1,5 @@
+# flake8: noqa
+
 from payroll.payment_gateway.payment_gateway_connector import PaymentGatewayConnector
 from payroll.payment_gateway.mocked_payment_gateway_connector import MockedPaymentGatewayConnector
 from payroll.payment_gateway.payment_gateway_config import PaymentGatewayConfig

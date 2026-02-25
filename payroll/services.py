@@ -1,3 +1,4 @@
+import json
 import logging
 import pandas as pd
 from io import BytesIO
@@ -9,9 +10,15 @@ from django.utils.translation import gettext as _
 
 from core import datetime
 from core.custom_filters import CustomFilterWizardStorage
+from core.utils import to_json_safe_value
 from core.models import InteractiveUser
 from core.services import BaseService
 from core.signals import register_service_signal
+from core.services.utils import (
+    check_authentication as check_authentication,
+    output_exception,
+    model_representation,
+)
 from invoice.models import Bill, PaymentInvoice, DetailPaymentInvoice
 from invoice.services import PaymentInvoiceService
 from payment_cycle.models import PaymentCycle
@@ -19,6 +26,7 @@ from payroll.apps import PayrollConfig
 from payroll.models import (
     PaymentPoint,
     Payroll,
+    PayrollStatus,
     PayrollBenefitConsumption,
     BenefitConsumption,
     BenefitAttachment,
@@ -28,9 +36,8 @@ from payroll.models import (
 from payroll.tasks import send_requests_to_gateway_payment
 from payroll.validation import PaymentPointValidation, PayrollValidation, BenefitConsumptionValidation
 from calculation.services import get_calculation_object
-from core.services.utils import output_exception, check_authentication
 from contribution_plan.models import PaymentPlan
-from social_protection.models import GroupBeneficiary, BeneficiaryStatus
+from social_protection.models import GroupBeneficiary, Beneficiary, BeneficiaryStatus, BenefitPlan
 from tasks_management.apps import TasksManagementConfig
 from tasks_management.models import Task
 from tasks_management.services import TaskService, _get_std_task_data_payload
@@ -57,6 +64,8 @@ class PaymentPointService(BaseService):
         return super().delete(obj_data)
 
 
+PAYROLL_BULK_CREATE_BATCH_SIZE = 500
+
 class PayrollService(BaseService):
     OBJECT_TYPE = Payroll
 
@@ -69,24 +78,19 @@ class PayrollService(BaseService):
         try:
             with transaction.atomic():
                 obj_data = self._adjust_create_payload(obj_data)
-                from_failed_invoices_payroll_id = obj_data.pop("from_failed_invoices_payroll_id", None)
-                payment_plan = self._get_payment_plan(obj_data)
-                payment_cycle = self._get_payment_cycle(obj_data)
-                date_valid_from, date_valid_to = self._get_dates_parameter(obj_data)
+                
+                # Enrich json_ext with safe original params before saving
+                json_safe_obj_data = self._recursively_to_json_safe(obj_data)
+                obj_data['json_ext'] = {
+                    **self._get_json_ext_as_dict(obj_data),
+                    'creation_params': json_safe_obj_data
+                }
+
                 payroll, dict_representation = self._save_payroll(obj_data)
-                if not bool(from_failed_invoices_payroll_id):
-                    beneficiaries_queryset = self._select_beneficiary_based_on_location(payroll, payment_plan)
-                    self._generate_benefits(
-                        payment_plan,
-                        beneficiaries_queryset,
-                        date_valid_from,
-                        date_valid_to,
-                        payroll,
-                        payment_cycle
-                    )
-                else:
-                    self._move_benefit_consumptions(payroll, from_failed_invoices_payroll_id)
-                self.create_verify_payroll_task(payroll.id, obj_data)
+
+                from payroll.tasks import create_payroll_benefits_task
+                create_payroll_benefits_task.delay(payroll.id, self.user.id, json_safe_obj_data)
+
                 return dict_representation
         except Exception as exc:
             return output_exception(model_name=self.OBJECT_TYPE.__name__, method="create", exception=exc)
@@ -110,10 +114,41 @@ class PayrollService(BaseService):
         })
 
     @check_authentication
+    @register_service_signal('payroll_service.retrigger_creation')
+    def retrigger_creation(self, obj_data):
+        try:
+            payroll = Payroll.objects.get(id=obj_data['id'])
+            creation_params = (payroll.json_ext or {}).get('creation_params')
+            if not creation_params:
+                raise ValueError("Original creation parameters not found.")
+
+            payroll.status = PayrollStatus.GENERATING
+            if payroll.json_ext:
+                payroll.json_ext.pop('creation_error', None)
+            payroll.save(username=self.user.login_name)
+
+            from payroll.tasks import create_payroll_benefits_task
+            create_payroll_benefits_task.delay(payroll.id, self.user.id, creation_params)
+            return model_representation(payroll)
+        except Exception as exc:
+            return output_exception(model_name=self.OBJECT_TYPE.__name__, method="retrigger_creation", exception=exc)
+
+    @check_authentication
     @register_service_signal('payroll_service.attach_benefit_to_payroll')
     def attach_benefit_to_payroll(self, payroll_id, benefit_id):
         payroll_benefit = PayrollBenefitConsumption(payroll_id=payroll_id, benefit_id=benefit_id)
-        payroll_benefit.save(username=self.user.username)
+        payroll_benefit.save(user=self.user)
+
+    def bulk_attach_benefits(self, payroll_benefit_consumptions):
+        """Bulk create PayrollBenefitConsumption instances.
+
+        Args:
+            payroll_benefit_consumptions: list of PayrollBenefitConsumption model instances
+                                          with audit fields already set.
+        """
+        return PayrollBenefitConsumption.objects.bulk_create(
+            payroll_benefit_consumptions, batch_size=PAYROLL_BULK_CREATE_BATCH_SIZE
+        )
 
     @register_service_signal('payroll_service.create_task')
     def create_accept_payroll_task(self, payroll_id, obj_data):
@@ -171,12 +206,28 @@ class PayrollService(BaseService):
         payroll_id = obj_data['id']
         send_requests_to_gateway_payment.delay(payroll_id, self.user.id)
 
+    def _recursively_to_json_safe(self, obj):
+        if isinstance(obj, dict):
+            return {k: self._recursively_to_json_safe(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple, set)):
+            return [self._recursively_to_json_safe(v) for v in obj]
+        return to_json_safe_value(obj)
+
     def _save_payroll(self, obj_data):
         obj_ = self.OBJECT_TYPE(**obj_data)
         dict_representation = self.save_instance(obj_)
         payroll_id = dict_representation["data"]["id"]
         payroll = Payroll.objects.get(id=payroll_id)
         return payroll, dict_representation
+
+    def _get_json_ext_as_dict(self, obj_data):
+        json_ext = obj_data.get("json_ext") or {}
+        if isinstance(json_ext, str):
+            try:
+                json_ext = json.loads(json_ext)
+            except (ValueError, TypeError):
+                json_ext = {}
+        return json_ext
 
     def _get_payment_plan(self, obj_data):
         payment_plan_id = obj_data.get("payment_plan_id")
@@ -194,18 +245,45 @@ class PayrollService(BaseService):
         return date_valid_from, date_valid_to
 
     def _select_beneficiary_based_on_criteria(self, obj_data, payment_plan):
-        json_ext = obj_data.get("json_ext")
-        custom_filters = [
-            criterion["custom_filter_condition"]
-            for criterion in json_ext.get("advanced_criteria", [])
-        ] if json_ext else []
+        json_ext = self._get_json_ext_as_dict(obj_data)
+        
+        if payment_plan.benefit_plan.type == BenefitPlan.BenefitPlanType.GROUP_TYPE:
+            beneficiary_model = GroupBeneficiary
+        else:
+            beneficiary_model = Beneficiary
 
-        beneficiaries_queryset = GroupBeneficiary.objects.filter(
+        beneficiaries_queryset = beneficiary_model.objects.filter(
             benefit_plan__id=payment_plan.benefit_plan.id,
             status=BeneficiaryStatus.ACTIVE,
             is_deleted=False,
         )
 
+        filter_criteria = json_ext.get("filter_criteria", {})
+
+        project_ids = filter_criteria.get("project_ids", [])
+        if project_ids:
+            beneficiaries_queryset = beneficiaries_queryset.filter(
+                project__id__in=project_ids
+            )
+
+        location_ids = filter_criteria.get("location_ids", [])
+        if location_ids:
+            if payment_plan.benefit_plan.type == BenefitPlan.BenefitPlanType.GROUP_TYPE:
+                location_q = Q(group__location__uuid__in=location_ids) | \
+                             Q(group__location__parent__uuid__in=location_ids) | \
+                             Q(group__location__parent__parent__uuid__in=location_ids) | \
+                             Q(group__location__parent__parent__parent__uuid__in=location_ids)
+            else:
+                location_q = Q(individual__location__uuid__in=location_ids) | \
+                             Q(individual__location__parent__uuid__in=location_ids) | \
+                             Q(individual__location__parent__parent__uuid__in=location_ids) | \
+                             Q(individual__location__parent__parent__parent__uuid__in=location_ids)
+            beneficiaries_queryset = beneficiaries_queryset.filter(location_q)
+
+        custom_filters = [
+            criterion["custom_filter_condition"]
+            for criterion in json_ext.get("advanced_criteria", [])
+        ]
         if custom_filters:
             beneficiaries_queryset = CustomFilterWizardStorage.build_custom_filters_queryset(
                 PayrollConfig.name,
@@ -222,8 +300,6 @@ class PayrollService(BaseService):
             status=BeneficiaryStatus.ACTIVE,
             is_deleted=False,
             group__location__parent__id=payroll.location.id
-        ).filter(
-            Q(json_ext__moyen_paiement__agence__isnull=False) & Q(json_ext__moyen_paiement__agence=payroll.payment_point.name)
         ) if payroll.location.id else GroupBeneficiary.objects.none()
 
     def _generate_benefits(self, payment_plan, beneficiaries_queryset, date_from, date_to, payroll, payment_cycle):
@@ -268,7 +344,7 @@ class BenefitConsumptionService(BaseService):
     def delete(self, obj_data):
         benefit_to_delete = BenefitConsumption.objects.get(id=obj_data['id'])
         benefit_to_delete.status = BenefitConsumptionStatus.PENDING_DELETION
-        benefit_to_delete.save(username=self.user.username)
+        benefit_to_delete.save(user=self.user)
         data = {'id': benefit_to_delete.id}
         TaskService(self.user).create({
             'source': 'benefit_delete',
@@ -303,7 +379,24 @@ class BenefitConsumptionService(BaseService):
         # save new bill attachments
         for bill in bills_queryset:
             benefit_attachment = BenefitAttachment(bill_id=bill.id, benefit_id=benefit_id)
-            benefit_attachment.save(username=self.user.username)
+            benefit_attachment.save(user=self.user)
+
+    def bulk_create(self, benefits):
+        """Bulk create BenefitConsumption instances.
+
+        Args:
+            benefits: list of BenefitConsumption model instances with pre-assigned PKs
+                      and audit fields already set.
+        """
+        return BenefitConsumption.objects.bulk_create(benefits, batch_size=500)
+
+    def bulk_create_attachments(self, attachments):
+        """Bulk create BenefitAttachment instances.
+
+        Args:
+            attachments: list of BenefitAttachment model instances with audit fields set.
+        """
+        return BenefitAttachment.objects.bulk_create(attachments, batch_size=500)
 
     @staticmethod
     def get_benefits_by_payment_point(payment_point_name, status=None):
@@ -461,8 +554,9 @@ class CsvReconciliationService:
             in_memory_file = BytesIO()
             df.rename(columns={k: v for k, v in PayrollConfig.csv_reconciliation_field_mapping.items()}, inplace=True)
             df.to_csv(in_memory_file, index=False)
-            return in_memory_file, error_df.set_index(PayrollConfig.csv_reconciliation_code_column)\
-                                   [PayrollConfig.csv_reconciliation_errors_column].to_dict(), summary
+            return in_memory_file, error_df.set_index(PayrollConfig.csv_reconciliation_code_column)[
+                PayrollConfig.csv_reconciliation_errors_column
+            ].to_dict(), summary
         return file, None, summary
 
     def _get_benefit_consumption_qs(self, payroll):

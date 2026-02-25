@@ -41,10 +41,12 @@ class UpdatePaymentGatewayConfigInputType(OpenIMISMutation.Input):
 class CreatePayrollInput(OpenIMISMutation.Input):
     class PayrollStatusEnum(graphene.Enum):
         PENDING_VERIFICATION = PayrollStatus.PENDING_VERIFICATION
+        GENERATING = PayrollStatus.GENERATING
         PENDING_APPROVAL = PayrollStatus.PENDING_APPROVAL
         APPROVE_FOR_PAYMENT = PayrollStatus.APPROVE_FOR_PAYMENT
         REJECTED = PayrollStatus.REJECTED
         RECONCILED = PayrollStatus.RECONCILED
+        FAILED = PayrollStatus.FAILED
 
     name = graphene.String(required=True, max_length=255)
     payment_plan_id = graphene.UUID(required=True)
@@ -347,4 +349,30 @@ class RejectBenefitConsumptionMutation(BaseHistoryModelUpdateMutationMixin, Base
 
     class Input(RejectBenefitConsumptionInputType):
         pass
+
+
+class RetriggerPayrollMutation(BaseMutation):
+    _mutation_class = "RetriggerPayrollMutation"
+    _mutation_module = "payroll"
+    _model = Payroll
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.has_perms(
+                PayrollConfig.gql_payroll_create_perms):
+            raise ValidationError("mutation.authentication_required")
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        if "client_mutation_id" in data:
+            data.pop('client_mutation_id')
+        if "client_mutation_label" in data:
+            data.pop('client_mutation_label')
+
+        service = PayrollService(user)
+        response = service.retrigger_creation(data)
+        return response
+
+    class Input(OpenIMISMutation.Input):
+        id = graphene.UUID(required=True)
 
