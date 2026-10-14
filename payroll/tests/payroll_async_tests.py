@@ -1,5 +1,7 @@
 import uuid
+from unittest import mock
 from django.test import override_settings
+from core.signals import REGISTERED_SERVICE_SIGNALS
 from payroll.models import Payroll, PayrollStatus, PayrollBenefitConsumption
 from payroll.services import PayrollService
 from payroll.tests.payroll_gql_tests import PayrollGQLTestCase
@@ -8,6 +10,16 @@ from payroll.tests.data import gql_payroll_create, gql_payroll_retrigger
 
 @override_settings(CELERY_TASK_ALWAYS_EAGER=True)
 class PayrollAsyncTests(PayrollGQLTestCase):
+
+    def setUp(self):
+        super().setUp()
+        # The payroll module binds no receiver after payroll_service.create_task;
+        # receivers other installed modules bind there may move the payroll on
+        # from PENDING_APPROVAL. Muting them keeps each test on this module's result.
+        after_create_task = REGISTERED_SERVICE_SIGNALS['payroll_service.create_task'].after_service_signal
+        patcher = mock.patch.object(after_create_task, 'receivers', [])
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_create_payroll_async_success(self):
         """Verify that creating a payroll triggers the async task and transitions
