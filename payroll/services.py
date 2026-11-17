@@ -122,6 +122,10 @@ class PayrollService(BaseService):
                 'creation_params': json_safe_obj_data
             }
 
+            # Where the benefits of a payroll for failed invoices come from: a creation
+            # parameter, kept in creation_params for the worker, not a Payroll field.
+            obj_data.pop('from_failed_invoices_payroll_id', None)
+
             # Commit independently so the row persists even if benefit generation fails.
             with transaction.atomic():
                 payroll, dict_representation = self._save_payroll(obj_data)
