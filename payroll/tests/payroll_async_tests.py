@@ -250,3 +250,41 @@ class PayrollAsyncTests(PayrollGQLTestCase):
             str(result.get("detail", "")) + str(result.get("message", "")),
         )
         self.assertFalse(Payroll.objects.filter(name=name).exists(), "nothing may be saved")
+
+    def test_create_payroll_for_the_failed_invoices_of_another(self):
+        """A payroll created for the failed invoices of a reconciled one ("Create Payment For
+        Failed Invoice") is saved: from_failed_invoices_payroll_id says where its benefits come
+        from, it is no field of the payroll."""
+        source = Payroll(
+            name="FailedInvoicesSource",
+            payment_cycle=self.payment_cycle,
+            payment_plan=self.payment_plan,
+            payment_point=self.payment_point,
+            payment_method=self.payment_method,
+            status=PayrollStatus.RECONCILED,
+            date_valid_from=self.date_valid_from,
+            date_valid_to=self.date_valid_to,
+        )
+        source.save(username='username_authorized')
+        name = "FailedInvoicesTarget"
+
+        service = PayrollService(self.user)
+        with self.captureOnCommitCallbacks(execute=True):
+            result = service.create({
+                "name": name,
+                "payment_cycle_id": str(self.payment_cycle.id),
+                "payment_plan_id": str(self.payment_plan.id),
+                "payment_point_id": str(self.payment_point.id),
+                "payment_method": self.payment_method,
+                "date_valid_from": self.date_valid_from,
+                "date_valid_to": self.date_valid_to,
+                "from_failed_invoices_payroll_id": source.id,
+            })
+
+        self.assertTrue(result.get('success'), result)
+        payroll = Payroll.objects.get(name=name, is_deleted=False)
+        self.assertEqual(payroll.status, PayrollStatus.PENDING_APPROVAL)
+        self.assertEqual(
+            payroll.json_ext['creation_params']['from_failed_invoices_payroll_id'], str(source.id),
+            "a retrigger must still know where the benefits come from",
+        )
