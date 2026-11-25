@@ -3,6 +3,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# json_ext key of a benefit a rejection left in place because it may be paid.
+REJECTION_HOLD_KEY = 'rejection_hold'
+
 
 class StrategyOfPaymentInterface(object, metaclass=abc.ABCMeta):
 
@@ -25,47 +28,62 @@ class StrategyOfPaymentInterface(object, metaclass=abc.ABCMeta):
 
     @classmethod
     def reject_payroll(cls, payroll, user, **kwargs):
+        """Reject a payroll at approval: it becomes REJECTED and its rows are
+        released as ``remove_benefits_from_rejected_payroll`` does."""
         from payroll.models import PayrollStatus
         cls.change_status_of_payroll(payroll, PayrollStatus.REJECTED, user)
-        cls.remove_benefits_from_rejected_payroll(payroll)
+        cls.remove_benefits_from_rejected_payroll(
+            payroll, user=user, stage='payroll_rejected', task_id=kwargs.get('task_id'))
 
     @classmethod
-    def reject_approved_payroll(cls, payroll, user):
-        from django.contrib.contenttypes.models import ContentType
+    def reject_approved_payroll(cls, payroll, user, **kwargs):
+        """Send an approved payroll back to approval without taking back a payment.
+
+        Only a live APPROVE_FOR_PAYMENT payroll is rejected; any other is left
+        as it is and the refusal is logged. A benefit an agency may have paid
+        (``sent_benefit_reasons``) keeps its status, its receipt and its bill
+        payment; ``json_ext.rejection_hold`` records the rejection on it. The
+        payroll becomes PENDING_APPROVAL and a new approval task is created.
+        """
+        from django.utils import timezone
         from core.services.utils.serviceUtils import model_representation
         from payroll.models import (
             BenefitConsumption,
-            BenefitConsumptionStatus,
+            Payroll,
+            PayrollBenefitConsumption,
             PayrollStatus
-        )
-        from invoice.models import (
-            DetailPaymentInvoice,
-            PaymentInvoice,
-            Bill
         )
         from payroll.services import PayrollService
 
-        benefit_data = BenefitConsumption.objects.filter(
-            payrollbenefitconsumption__payroll=payroll,
-            status=BenefitConsumptionStatus.RECONCILED,
-            is_deleted=False
-        )
-        benefit_data_related = list(benefit_data.values_list('id', 'benefitattachment__bill'))
-        if len(benefit_data_related) > 0:
-            benefits, related_bills = zip(*benefit_data_related)
-            bill_content_type = ContentType.objects.get_for_model(Bill)
-            detail_payment_invoices = DetailPaymentInvoice.objects.filter(
-                subject_type=bill_content_type,
-                subject_id__in=related_bills
+        # .all(): the manager's get() on an id may answer from a stale cache.
+        payroll = Payroll.objects.all().get(id=payroll.id)
+        if payroll.is_deleted or payroll.status != PayrollStatus.APPROVE_FOR_PAYMENT:
+            logger.error(
+                "Rejection of approved payroll %s refused: status %s%s; only a live %s payroll is rejected.",
+                payroll.id, payroll.status, ", deleted" if payroll.is_deleted else "",
+                PayrollStatus.APPROVE_FOR_PAYMENT,
             )
-            payment_invoice_ids = list(detail_payment_invoices.values_list('payment_id', flat=True))
-            detail_payment_invoices.delete()
-            PaymentInvoice.objects.filter(id__in=payment_invoice_ids).delete()
+            return
 
-        for benefit in benefit_data:
-            benefit.receipt = None
-            benefit.status = BenefitConsumptionStatus.ACCEPTED
-            benefit.save(username=user.username)
+        benefits = list(BenefitConsumption.objects.all().filter(
+            id__in=PayrollBenefitConsumption.objects.filter(
+                payroll=payroll, is_deleted=False).values('benefit_id'),
+            is_deleted=False,
+        ))
+        sent = cls.sent_benefit_reasons(benefits)
+        rejection = {
+            'stage': 'approved_payroll_rejected',
+            'at': timezone.now().isoformat(),
+            'by': user.login_name,
+            'task_id': str(kwargs['task_id']) if kwargs.get('task_id') else None,
+            'payroll_id': str(payroll.id),
+        }
+        for benefit in benefits:
+            if benefit.id in sent:
+                json_ext = dict(benefit.json_ext) if isinstance(benefit.json_ext, dict) else {}
+                json_ext[REJECTION_HOLD_KEY] = {**rejection, 'reason': sent[benefit.id]}
+                benefit.json_ext = json_ext
+                benefit.save(username=user.username)
         cls.change_status_of_payroll(payroll, PayrollStatus.PENDING_APPROVAL, user)
         PayrollService(user).create_accept_payroll_task(payroll.id, model_representation(payroll))
 
@@ -150,7 +168,24 @@ class StrategyOfPaymentInterface(object, metaclass=abc.ABCMeta):
         return True
 
     @classmethod
-    def remove_benefits_from_rejected_payroll(cls, payroll):
+    def remove_benefits_from_rejected_payroll(cls, payroll, user=None, **kwargs):
+        """Remove the benefits of a rejected or deleted payroll that no agency
+        may have paid. Returns the held reasons by benefit id.
+
+        One transaction locks the benefit rows linked to the payroll
+        (``SELECT ... FOR UPDATE``), reads ``sent_benefit_reasons`` on the
+        locked rows and deletes. A sender that claims rows with ``SKIP
+        LOCKED`` cannot take them meanwhile; a row a sender holds is read
+        once its transaction ends.
+
+        A benefit an agency may have paid keeps its row, link, status,
+        receipt and bill; ``json_ext.rejection_hold`` records why, with
+        ``kwargs['stage']`` and ``kwargs['task_id']``. Every other benefit
+        is deleted with its attachments, bill items, bills and its links to
+        this payroll.
+        """
+        from django.db import transaction
+        from django.utils import timezone
         from payroll.models import (
             BenefitAttachment,
             BenefitConsumption,
@@ -161,32 +196,40 @@ class StrategyOfPaymentInterface(object, metaclass=abc.ABCMeta):
             BillItem
         )
 
-        benefit_data = BenefitConsumption.objects.filter(
-            payrollbenefitconsumption__payroll=payroll,
-            is_deleted=False
-        ).values_list('id', 'benefitattachment__bill')
+        with transaction.atomic():
+            benefits = list(BenefitConsumption.objects.select_for_update().filter(
+                id__in=PayrollBenefitConsumption.objects.filter(payroll=payroll).values('benefit_id'),
+                is_deleted=False,
+            ).order_by('id'))
+            held = cls.sent_benefit_reasons(benefits)
+            hold = {
+                'stage': kwargs.get('stage') or 'payroll_rejected',
+                'at': timezone.now().isoformat(),
+                'by': user.login_name if user else None,
+                'task_id': str(kwargs['task_id']) if kwargs.get('task_id') else None,
+                'payroll_id': str(payroll.id),
+            }
+            for benefit in benefits:
+                if benefit.id in held:
+                    json_ext = dict(benefit.json_ext) if isinstance(benefit.json_ext, dict) else {}
+                    json_ext[REJECTION_HOLD_KEY] = {**hold, 'reason': held[benefit.id]}
+                    benefit.json_ext = json_ext
+                    benefit.save(user=user)
+            if held:
+                logger.warning("Payroll %s: %d benefit(s) that may have been paid kept, not deleted",
+                               payroll.id, len(held))
 
-        if len(benefit_data) > 0:
-            benefits, related_bills = zip(*benefit_data)
-
-            BenefitAttachment.objects.filter(
-                benefit_id__in=benefits
-            ).delete()
-
-            BillItem.objects.filter(
-                bill__id__in=related_bills
-            ).delete()
-
-            Bill.objects.filter(
-                id__in=related_bills
-            ).delete()
-
-            PayrollBenefitConsumption.objects.filter(payroll=payroll).delete()
-
-            BenefitConsumption.objects.filter(
-                id__in=benefits,
-                is_deleted=False
-            ).delete()
+            released = [benefit.id for benefit in benefits if benefit.id not in held]
+            if not released:
+                return held
+            related_bills = list(BenefitAttachment.objects.filter(
+                benefit_id__in=released).values_list('bill_id', flat=True))
+            BenefitAttachment.objects.filter(benefit_id__in=released).delete()
+            BillItem.objects.filter(bill__id__in=related_bills).delete()
+            Bill.objects.filter(id__in=related_bills).delete()
+            PayrollBenefitConsumption.objects.filter(payroll=payroll, benefit_id__in=released).delete()
+            BenefitConsumption.objects.filter(id__in=released, is_deleted=False).delete()
+        return held
 
     @classmethod
     def remove_benefit_from_payroll(cls, benefit):

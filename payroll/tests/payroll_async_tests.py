@@ -4,6 +4,7 @@ from unittest import mock
 from django.test import override_settings
 from payroll.models import Payroll, PayrollStatus, PayrollBenefitConsumption
 from payroll.services import PayrollService
+from payroll.apps import PayrollConfig
 from payroll.tasks import create_payroll_benefits_task
 from contribution_plan.tests.helpers import create_test_payment_plan
 from payroll.tests.payroll_gql_tests import PayrollGQLTestCase
@@ -251,10 +252,12 @@ class PayrollAsyncTests(PayrollGQLTestCase):
         )
         self.assertFalse(Payroll.objects.filter(name=name).exists(), "nothing may be saved")
 
+    @mock.patch.object(PayrollConfig, 'move_benefits_from_failed_invoices_payroll', True)
     def test_create_payroll_for_the_failed_invoices_of_another(self):
-        """A payroll created for the failed invoices of a reconciled one ("Create Payment For
-        Failed Invoice") is saved: from_failed_invoices_payroll_id says where its benefits come
-        from, it is no field of the payroll."""
+        """Where the configuration allows it, a payroll created for the failed invoices of a
+        reconciled one ("Create Payment For Failed Invoice") is saved:
+        from_failed_invoices_payroll_id says where its benefits come from, it is no field of
+        the payroll."""
         source = Payroll(
             name="FailedInvoicesSource",
             payment_cycle=self.payment_cycle,
